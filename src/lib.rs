@@ -65,11 +65,11 @@ pub mod day1 {
 
             for n in 1..1000 {
                 let x = crate::util::reading::八(
-                    u64::from_le_bytes(crate::util::nail::<8>(&i[n * 14 - 3..]))
+                    u64::from_le_bytes(crate::util::nail::<8>(i.get_unchecked(n * 14 - 3..)))
                         & 0xffffffffff000000,
                 );
                 let y = crate::util::reading::八(u64::from_le_bytes(crate::util::nail::<8>(
-                    &i[n * 14 + 5..],
+                    i.get_unchecked(n * 14 + 5..),
                 )));
                 *a.get_unchecked_mut(n) = x as u32;
                 *map.get_unchecked_mut(y as usize) += 1;
