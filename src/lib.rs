@@ -28,8 +28,8 @@ pub mod day1 {
     use crate::util::prelude::*;
 
     pub fn part1(i: &str) -> impl Display {
-        static mut a: [u32; 1000] = [0; 1000];
-        static mut b: [u32; 1000] = [0; 1000];
+        static mut a: [i32; 1000] = [0; 1000];
+        static mut b: [i32; 1000] = [0; 1000];
 
         unsafe {
             i.as_bytes()
@@ -47,8 +47,8 @@ pub mod day1 {
             a.iter()
                 .copied()
                 .zip(b)
-                .map(|(x, y)| (x as i32 - y as i32).abs() as u32)
-                .sum::<u32>()
+                .map(|(x, y)| (x - y).abs())
+                .sum::<i32>()
         }
     }
 
