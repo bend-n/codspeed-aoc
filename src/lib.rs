@@ -42,8 +42,8 @@ pub mod day1 {
                     *b.get_unchecked_mut(i) = y;
                 });
 
-            a.sort_unstable();
-            b.sort_unstable();
+            radsort::sort(&mut a);
+            radsort::sort(&mut b);
             a.iter()
                 .copied()
                 .zip(b)
