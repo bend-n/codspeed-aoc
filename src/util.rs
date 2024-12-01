@@ -897,9 +897,9 @@ pub fn nail<const N: usize>(x: &[u8]) -> [u8; N] {
 }
 
 pub mod reading {
-    pub fn 八(s: [u8; 8]) -> u64 {
+    pub fn 八(n: u64) -> u64 {
         // reinterpret as u64 ("92233721" => 92233721)
-        let n = u64::from_le_bytes(s);
+        // let n = u64::from_le_bytes(s);
         // combine 4 pairs of single digits:
         // split pieces into odd and even
         //  1_7_3_2_ (le repr)
