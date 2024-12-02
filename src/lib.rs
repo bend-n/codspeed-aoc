@@ -31,17 +31,19 @@ pub mod day1 {
         static mut a: [i32; 1000] = [0; 1000];
         static mut b: [i32; 1000] = [0; 1000];
 
+        let i = i.as_bytes();
         unsafe {
-            i.as_bytes()
-                .as_chunks_unchecked::<14>()
-                .into_iter()
-                .map(|x| (reading::all(&x[0..5]), reading::all(&x[8..13])))
-                .enumerate()
-                .for_each(|(i, (x, y))| {
-                    *a.get_unchecked_mut(i) = x;
-                    *b.get_unchecked_mut(i) = y;
-                });
+            for n in 0..1000 {
+                let i = C! { &i[n * 14..] };
+                let n1 = reading::八(
+                    u64::from_le_bytes(crate::util::nail(C! { &i[..8] })) << 24
+                        | (0x3030303030303030 & !24),
+                ) as i32;
+                let n2 = reading::八(u64::from_le_bytes(crate::util::nail(C! { &i[5..]}))) as i32;
 
+                *a.get_unchecked_mut(n) = n1;
+                *b.get_unchecked_mut(n) = n2;
+            }
             radsort::sort(&mut a);
             radsort::sort(&mut b);
             a.iter()
