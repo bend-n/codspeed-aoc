@@ -24,64 +24,116 @@
     core_intrinsics
 )]
 mod util;
-pub mod day1 {
+pub mod day2 {
+use crate::util;
     use crate::util::prelude::*;
-
-    pub fn part1(i: &str) -> impl Display {
-        static mut a: [i32; 1000] = [0; 1000];
-        static mut b: [i32; 1000] = [0; 1000];
-
-        let i = i.as_bytes();
-        unsafe {
-            for n in 0..1000 {
-                let i = C! { &i[n * 14..] };
-                let n1 = reading::八(
-                    u64::from_le_bytes(crate::util::nail(C! { &i[..8] })) << 24
-                        | (0x3030303030303030 & !24),
-                ) as i32;
-                let n2 = reading::八(u64::from_le_bytes(crate::util::nail(C! { &i[5..]}))) as i32;
-
-                *a.get_unchecked_mut(n) = n1;
-                *b.get_unchecked_mut(n) = n2;
-            }
-            a.sort_unstable();
-            b.sort_unstable();
-            // radsort::sort(&mut a);
-            // radsort::sort(&mut b);
-            a.iter()
-                .copied()
-                .zip(b)
-                .map(|(x, y)| (x - y).abs())
-                .sum::<i32>()
+    #[no_mangle]
+    fn check(x: &[i8]) -> bool {
+        if x.len() > 8 {
+            unsafe { std::hint::unreachable_unchecked() }
         }
+        let state = unsafe { x.first_chunk::<2>().map(|[a, b]| a < b).unwrap_unchecked() };
+        x.array_windows::<2>().all(|[a, b]| match state {
+            true if !(1..=3).contains(&(b - a)) => return false,
+            false if !(1..=3).contains(&(a - b)) => return false,
+            _ => true,
+        })
     }
 
-    pub fn part2(i: &str) -> impl Display {
-        static mut a: [u32; 1000] = [0; 1000];
-        static mut map: [u32; 100000] = [0; 100000];
-        let i = i.as_bytes();
+    pub fn part1(i: &str) -> impl Display {
+        let mut items = [0; 8];
+        i.行()
+            .filter(|x| {
+                let mut len = 0;
+                let mut s = 0;
+                for &b in *x {
+                    match b {
+                        b' ' => {
+                            C! { items[len] = s as i8 };
+                            len += 1;
+                            s = 0;
+                        }
+                        b => s = s * 10 + (b - b'0'),
+                    }
+                }
+                C! { items[len] = s as i8 };
+                let slice = C! { &items[..len + 1] };
+                check(slice)
+                // (0..items.len()).any(|n| {
+                //     let mut items = items.clone();
+                //     items.remove(n);
+                //     check2(&items)
+                // })
+            })
+            .count()
+    }
 
-        unsafe {
-            let x = C! { &i[..14] };
-            let (x, y) = (reading::all(&x[0..5]), reading::all::<u32>(&x[8..13]));
-            *a.get_unchecked_mut(0) = x;
-            *map.get_unchecked_mut(y as usize) += 1;
-
-            for n in 1..1000 {
-                let x = crate::util::reading::八(
-                    u64::from_le_bytes(crate::util::nail::<8>(i.get_unchecked(n * 14 - 3..)))
-                        & 0xffffffffff000000,
-                );
-                let y = crate::util::reading::八(u64::from_le_bytes(crate::util::nail::<8>(
-                    i.get_unchecked(n * 14 + 5..),
-                )));
-                *a.get_unchecked_mut(n) = x as u32;
-                *map.get_unchecked_mut(y as usize) += 1;
-            }
-            a.iter()
-                .copied()
-                .map(|x| x * map.get_unchecked(x as usize))
-                .sum::<u32>()
+    #[no_mangle]
+    fn check_pof(x: &[i8]) -> Result<(), u8> {
+        if x.len() > 8 {
+            unsafe { std::hint::unreachable_unchecked() }
         }
+        let state = match unsafe {
+            x.first_chunk::<2>()
+                .map(|[a, b]| a.cmp(b))
+                .unwrap_unchecked()
+        } {
+            std::cmp::Ordering::Equal => return Err(0),
+            std::cmp::Ordering::Greater => false,
+            std::cmp::Ordering::Less => true,
+        };
+        // windows at home 😔
+        for i in 1..x.len() as u8 - 1 {
+            let [a, b] = util::nail(&x[i as usize..]);
+            match state {
+                true if !(1..=3).contains(&(b - a)) => return Err(i),
+                false if !(1..=3).contains(&(a - b)) => return Err(i),
+                _ => (),
+            }
+        }
+        Ok(())
+    }
+    #[no_mangle]
+    pub fn part2(i: &str) -> impl Display {
+        let mut items = [0; 8];
+
+        i.行()
+            .filter(|x| {
+                let mut len = 0;
+                let mut s = 0;
+                for &b in *x {
+                    match b {
+                        b' ' => {
+                            C! { items[len] = s as i8 };
+                            len += 1;
+                            s = 0;
+                        }
+                        b => {
+                            s = s * 10 + (b - b'0');
+                        }
+                    }
+                }
+                C! { items[len] = s as i8 };
+                let slice = C! { &items[..len + 1] };
+                match check_pof(slice) {
+                    Ok(()) => true,
+                    Err(i) => {
+                        let i = i as usize;
+                        let mut place = [0i8; 7];
+                        macro_rules! rmv {
+                            ($i:expr, $si: expr) => {{
+                                place[..$i].copy_from_slice(&slice[..$i]);
+                                let put = &slice[$si..];
+                                place[$i..$i + put.len()].copy_from_slice(put);
+                                &place[..slice.len() - 1]
+                            }};
+                        }
+                        check(rmv!(i, i + 1)) // [1, 2, >i<, 4, 5]
+                        || check(rmv!(i + 1, i + 2)) // [1, 2, i, >4<, 5]
+                        || (i > 0 && check(rmv!(i - 1, i))) // [1, >2<, i, 4, 5]
+                    }
+                }
+            })
+            .count()
     }
 }
