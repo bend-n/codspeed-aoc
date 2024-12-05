@@ -21,113 +21,176 @@
     slice_as_chunks,
     array_chunks,
     slice_split_once,
-    core_intrinsics
+    core_intrinsics,
+    portable_simd
 )]
 mod util;
-pub mod day3 {
+pub mod day4 {
     use crate::util::prelude::*;
+    const SIZE: usize = 140;
 
-    fn manual_n<const N: usize>(n: [&u8; N]) -> u32 {
-        n.iter()
-            .map(|&&x| (x - b'0') as u32)
-            .fold(0, |acc, x| acc * 10 + x)
+    #[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+    struct bitset140([u64; 3]);
+    impl bitset140 {
+        #[inline]
+        fn count_ones(self) -> u32 {
+            self.0.iter().copied().map(u64::count_ones).sum()
+        }
     }
 
-    pub fn part1(i: &str) -> impl Display {
-        let mut i = i.as_bytes();
-        let mut sum = 0;
-        while let Some(idx) = memchr::memchr(b'm', i) {
-            i = C! { &i[idx + 1..] };
-            match i {
-                [b'u', b'l', b'(', rest @ ..] => {
-                    macro_rules! cases {
-                        ($([$($i:ident)+,$($t:ident)+])+) => {
-                            match rest {
-                                $(
-                                    [$($i @ b'0'..=b'9'),+, b',', $($t @ b'0'..=b'9'),+, b')', rest @ ..] => {
-                                        (manual_n([$($i),+]) * manual_n([$($t),+]), rest)
-                                    }
-                                )+
-                                _ => (0, i),
-                            }
+    impl std::ops::Shr<u32> for bitset140 {
+        type Output = Self;
 
-                        };
-                    }
-                    let (res, rest) = cases!(
-                        [a b c , d e f]
-                        [a b c , d e]
-                        [a b c , d]
-                        [a b , d e f]
-                        [a b , d e]
-                        [a b , d]
-                        [a , d e f]
-                        [a , d e]
-                        [a , d]
-                    );
-                    sum += res;
-                    i = rest;
-                }
-                _ => {}
-            }
+        #[inline]
+        fn shr(self, rhs: u32) -> Self::Output {
+            let bitset140([a, b, c]) = self;
+            Self([
+                a >> rhs,
+                b >> rhs | a << (u64::BITS - rhs),
+                c >> rhs | b << (u64::BITS - rhs),
+            ])
         }
+    }
+    impl std::ops::Shl<u32> for bitset140 {
+        type Output = Self;
 
-        sum
+        #[inline]
+        fn shl(self, rhs: u32) -> Self::Output {
+            let bitset140([a, b, c]) = self;
+            Self([
+                a << rhs | b >> (u64::BITS - rhs),
+                b << rhs | c >> (u64::BITS - rhs),
+                c << rhs,
+            ])
+        }
+    }
+
+    impl std::ops::BitAnd<bitset140> for bitset140 {
+        type Output = Self;
+
+        #[inline]
+        fn bitand(self, bitset140([a, b, c]): bitset140) -> Self::Output {
+            let [d, e, f] = self.0;
+            bitset140([a & d, b & e, c & f])
+        }
+    }
+
+    use std::simd::prelude::*;
+
+    pub fn part1(i: &str) -> impl Display {
+        fn load(i: &[u8; SIZE + 1]) -> [bitset140; 4] {
+            let loaded = [
+                u8x64::load_or_default(&i[128..]),
+                u8x64::from_slice(&i[64..128]),
+                u8x64::from_slice(&i[..64]),
+            ];
+
+            [
+                bitset140(loaded.map(|x| x.simd_eq(Simd::splat(b'X')).to_bitmask())),
+                bitset140(loaded.map(|x| x.simd_eq(Simd::splat(b'M')).to_bitmask())),
+                bitset140(loaded.map(|x| x.simd_eq(Simd::splat(b'A')).to_bitmask())),
+                bitset140(loaded.map(|x| x.simd_eq(Simd::splat(b'S')).to_bitmask())),
+            ]
+        }
+        unsafe {
+            let grid = i.as_bytes().as_chunks_unchecked::<{ SIZE + 1 }>();
+            // let masked: [masks; SIZE] = std::array::from_fn(|i| load(grid.get_unchecked(i)));
+            let mut sum = 0;
+            let mut prev_x = [bitset140::default(); 4];
+            let mut prev_m = [bitset140::default(); 4];
+            let mut prev_a = [bitset140::default(); 4];
+            let mut prev_s = [bitset140::default(); 4];
+
+            for y in 0..=2 {
+                let [x, m, a, s] = load(grid.get_unchecked(y));
+                sum += (x & m << 1 & a << 2 & s << 3).count_ones();
+                sum += (x & m >> 1 & a >> 2 & s >> 3).count_ones();
+                prev_x[y + 1] = x;
+                prev_m[y + 1] = m;
+                prev_a[y + 1] = a;
+                prev_s[y + 1] = s;
+                // prev[y + 1] = masks;
+            }
+            for y in 3..SIZE {
+                let [x, m, a, s] = load(grid.get_unchecked(y));
+                let [_, p1, p2, p3] = prev_x;
+                prev_x = [p1, p2, p3, x];
+                let [_, p1, p2, p3] = prev_m;
+                prev_m = [p1, p2, p3, m];
+                let [_, p1, p2, p3] = prev_a;
+                prev_a = [p1, p2, p3, a];
+                let [_, p1, p2, p3] = prev_s;
+                prev_s = [p1, p2, p3, s];
+
+                // println!("{a:?}");
+                // // ↘→←↓↙→←↑↗↖↗↖↗→↖↗↑↖18
+                // // overlap right
+                sum += (x & m << 1 & a << 2 & s << 3).count_ones();
+                // // overlap left
+                sum += (x & m >> 1 & a >> 2 & s >> 3).count_ones();
+
+                // // idea is to overlap and then count
+                // // idea comes from gioschii
+                // if y >= 3
+                //
+                {
+                    let x = x;
+                    let m = prev_m[3 - 1];
+                    let a = prev_a[3 - 2];
+                    let s = prev_s[3 - 3];
+
+                    // down diagonal
+                    sum += (x & m << 1 & a << 2 & s << 3).count_ones();
+                    sum += (x & m >> 1 & a >> 2 & s >> 3).count_ones();
+
+                    // vertical
+                    sum += (x & m & a & s).count_ones();
+                }
+                //
+                {
+                    let s = s;
+                    let a = prev_a[3 - 1];
+                    let m = prev_m[3 - 2];
+                    let x = prev_x[3 - 3];
+
+                    // up diagonals
+                    sum += (x & m << 1 & a << 2 & s << 3).count_ones();
+                    sum += (x & m >> 1 & a >> 2 & s >> 3).count_ones();
+
+                    sum += (x & m & a & s).count_ones();
+                }
+                // println!(
+                //     "{y}: {:064b}{:064b}{:064b}",
+                //     // sum - sum_,
+                //     x.0[0],
+                //     x.0[1],
+                //     x.0[2]
+                // );
+            }
+            sum
+        }
     }
 
     pub fn part2(i: &str) -> impl Display {
-        let mut i = i.as_bytes();
+        let g = i.as_bytes();
+        assert_eq!(g.len(), 141 * 140);
         let mut sum = 0;
-        let mut on = 1;
-        while let Some(idx) = memchr::memchr2(b'm', b'd', i) {
-            i = C! { &i[idx + 1..] };
-            match i {
-                [b'u', b'l', b'(', rest @ ..] => {
-                    macro_rules! cases {
-                    ($([$($i:ident)+,$($t:ident)+])+) => {
-                        match rest {
-                            $(
-                                [$($i @ b'0'..=b'9'),+, b',', $($t @ b'0'..=b'9'),+, b')', rest @ ..] => {
-                                    (manual_n([$($i),+]) * manual_n([$($t),+]) * on, rest)
-                                }
-                            )+
-                            _ => (0, i),
-                        }
-
-                    };
-                }
-                    let (res, rest) = cases!(
-                        [a b c , d e f]
-                        [a b c , d e]
-                        [a b c , d]
-                        [a b , d e f]
-                        [a b , d e]
-                        [a b , d]
-                        [a , d e f]
-                        [a , d e]
-                        [a , d]
-                    );
-                    sum += res;
-                    i = rest;
-                }
-                _ => mat! { on {
-                    0 => match i {
-                        [b'o', b'(', rest @ ..] => {
-                            on = 1;
-                            i = rest;
-                        }
-                        _ => {}
-                    },
-                    1 => match i {
-                        [b'o', b'n', rest @ ..] => {
-                            on = 0;
-                            i =rest;
-                        },
-                        _ => {},
-                    },
-                }},
-            }
+        // chunks of 64
+        for i in 0..304 {
+            // tl
+            let a = u8x64::from_slice(&g[64 * i..]);
+            // trd
+            let b = u8x64::from_slice(&g[64 * i + 2..]);
+            // mid
+            let current = u8x64::from_slice(&g[141 + 64 * i + 1..]);
+            // bl
+            let d = u8x64::from_slice(&g[141 * 2 + 64 * i..]);
+            // br
+            let c = u8x64::from_slice(&g[141 * 2 + 64 * i + 2..]);
+            let wz = ((a ^ c) + (b ^ d)).simd_eq(u8x64::splat(60));
+            let a = current.simd_eq(u8x64::splat(b'A'));
+            sum += (wz & a).to_bitmask().count_ones();
         }
-
         sum
     }
 }
