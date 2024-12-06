@@ -38,7 +38,6 @@ dependencies = [
  "aoc-runner",
  "aoc-runner-derive",
  "memchr",
- "radsort",
  "rustc-hash",
 ]
 
@@ -89,12 +88,6 @@ checksum = "b5b9d34b8991d19d98081b46eacdd8eb58c6f2b201139f7c5f643cc155a633af"
 dependencies = [
  "proc-macro2 1.0.92",
 ]
-
-[[package]]
-name = "radsort"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "019b4b213425016d7d84a153c4c73afb0946fbb4840e4eece7ba8848b9d6da22"
 
 [[package]]
 name = "rustc-hash"
