@@ -32,11 +32,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "car"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0122f0f55893530a647617887ebb7ff0888c62966817d81de4454dcee95e1c5"
+dependencies = [
+ "proc-macro2 1.0.92",
+ "quote 1.0.37",
+ "syn 2.0.90",
+]
+
+[[package]]
 name = "codspeed-aoc"
 version = "0.1.0"
 dependencies = [
  "aoc-runner",
  "aoc-runner-derive",
+ "car",
  "memchr",
  "rayon",
  "rustc-hash",

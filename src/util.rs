@@ -1,4 +1,4 @@
-#![allow(non_snake_case, unused_macros, warnings)]
+#![allow(non_snake_case, unused_macros)]
 
 use rustc_hash::FxHashMap as HashMap;
 use rustc_hash::FxHashSet as HashSet;
@@ -16,10 +16,10 @@ pub mod prelude {
     #[allow(unused_imports)]
     pub(crate) use super::{bits, dang, leek, mat, shucks, C};
     pub use super::{
-        even, gcd, gt, l, lcm, lt, pa, r, rand, reading, reading::Ext, sort, Dir, FilterBy,
-        FilterBy3, GreekTools, IntoCombinations, IntoLines, IterͶ, NumTupleIterTools, ParseIter,
-        Printable, Skip, TakeLine, TupleIterTools2, TupleIterTools2R, TupleIterTools3, TupleUtils,
-        UnifiedTupleUtils, UnsoundUtilities, Widen, Ͷ, Α, Κ, Λ, Μ,
+        even, gcd, gt, l, lcm, lt, nail, pa, r, rand, reading, reading::Ext, sort, DigiCount, Dir,
+        FilterBy, FilterBy3, GreekTools, IntoCombinations, IntoLines, IterͶ, NumTupleIterTools,
+        ParseIter, Printable, Skip, TakeLine, TupleIterTools2, TupleIterTools2R, TupleIterTools3,
+        TupleUtils, UnifiedTupleUtils, UnsoundUtilities, Widen, Ͷ, Α, Κ, Λ, Μ,
     };
     pub use rustc_hash::FxHashMap as HashMap;
     pub use rustc_hash::FxHashSet as HashSet;
@@ -425,6 +425,17 @@ impl std::ops::Add<(u8, u8)> for Dir {
     }
 }
 
+impl Dir {
+    pub fn turn_90(&mut self) {
+        match self {
+            Dir::N => *self = Dir::E,
+            Dir::E => *self = Dir::S,
+            Dir::S => *self = Dir::W,
+            Dir::W => *self = Dir::N,
+        }
+    }
+}
+
 pub fn pa<T: std::fmt::Debug>(a: &[T]) {
     for e in a {
         print!("{e:?}");
@@ -539,30 +550,72 @@ impl<T> Α<T> for Option<T> {
     }
 }
 
-pub trait Ͷ {
+pub trait DigiCount {
+    fn ͱ(self) -> u32;
+}
+
+pub const powers: [u64; 20] = car::from_fn!(|x| 10u64.pow(x as u32));
+// https://stackoverflow.com/a/9721570
+impl DigiCount for u64 {
+    fn ͱ(self) -> u32 {
+        static powers: [u64; 20] = car::from_fn!(|x| 10u64.pow(x as u32));
+        static mdigs: [u32; 65] = car::from_fn!(|x| 2u128.pow(x as u32).ilog10() + 1);
+        let bit = std::mem::size_of::<Self>() * 8 - self.leading_zeros() as usize;
+        let mut digs = mdigs[bit];
+        if self < C! { powers[digs as usize - 1] } {
+            digs -= 1;
+        }
+        digs
+    }
+}
+
+impl DigiCount for u32 {
+    fn ͱ(self) -> Self {
+        static powers: [u32; 10] = car::from_fn!(|x| 10u32.pow(x as u32));
+        static mdigs: [u32; 33] = car::from_fn!(|x| 2u128.pow(x as u32).ilog10() + 1);
+        let bit = std::mem::size_of::<Self>() * 8 - self.leading_zeros() as usize;
+        let mut digs = mdigs[bit];
+        if self < C! { powers[digs as usize - 1] } {
+            digs -= 1;
+        }
+        digs
+    }
+}
+
+impl DigiCount for u16 {
+    fn ͱ(self) -> u32 {
+        self.checked_ilog10().ψ() + 1
+    }
+}
+
+impl DigiCount for u8 {
+    fn ͱ(self) -> u32 {
+        self.checked_ilog10().ψ() + 1
+    }
+}
+
+pub trait Ͷ: DigiCount {
     fn ͷ(self) -> impl Iterator<Item = u8>;
+    fn Ͷ(self, i: u8) -> u8;
 }
 
 macro_rules! digs {
     ($for:ty) => {
         impl Ͷ for $for {
             fn ͷ(self) -> impl Iterator<Item = u8> {
-                let digits = (self.ilog10() + 1) as u8;
-                (0..digits)
-                    .rev()
-                    .map(move |n| ((self / (10 as $for).pow(n as _)) % 10) as u8)
+                let digits = self.ͱ() as u8;
+                (0..digits).rev().map(move |n| self.Ͷ(n))
+            }
+            fn Ͷ(self, i: u8) -> u8 {
+                ((self / (10 as $for).pow(i as _)) % 10) as u8
             }
         }
     };
 }
 digs!(u64);
-digs!(i64);
-digs!(i32);
 digs!(u32);
 digs!(u16);
-digs!(i16);
 digs!(u8);
-digs!(i8);
 
 #[derive(Copy, Clone, PartialEq, PartialOrd)]
 pub struct Ronge {
@@ -678,9 +731,7 @@ pub trait Μ where
 
 impl Μ for &[u8] {
     fn μ(self, d: char) -> (Self, Self) {
-        let i = self
-            .iter()
-            .position(|&x| x == d as u8)
+        let i = memchr::memchr(d as u8, self)
             .unwrap_or_else(|| shucks!("{} should split at {d} fine", self.p()));
         (&self[..i], &self[i + 1..])
     }
@@ -897,6 +948,7 @@ pub fn nail<const N: usize, T: Copy>(x: &[T]) -> [T; N] {
 }
 
 pub mod reading {
+    #[inline]
     pub fn 八(n: u64) -> u64 {
         // reinterpret as u64 ("92233721" => 92233721)
         // let n = u64::from_le_bytes(s);
@@ -941,19 +993,28 @@ pub mod reading {
         }
     }
     use crate::util::prelude::*;
-    pub fn κ(x: &[u8], v: &mut Vec<u64>) {
-        let mut s = 0;
+    pub fn κ<
+        T: Default + std::ops::Mul<T, Output = T> + Add<T, Output = T> + From<u8> + Copy + Ten + Debug,
+    >(
+        x: &[u8],
+        v: &mut [T],
+    ) -> usize {
+        let mut n = 0;
+        let mut s = T::default();
         for &b in x {
             match b {
                 b' ' => {
-                    v.push(s);
-                    s = 0;
+                    C! { v[n] = s };
+                    n += 1;
+                    s = T::default();
                 }
                 b => {
-                    s = s * 10 + (b - b'0') as u64;
+                    s = s * T::ten() + T::from(b - b'0');
                 }
             }
         }
+        C! {v[n] = s};
+        n + 1
     }
     pub trait Ten {
         fn ten() -> Self;
@@ -1047,13 +1108,11 @@ pub mod reading {
         }
     }
 
-    pub fn 迄<
-        T: Default + std::ops::Mul<T, Output = T> + Add<T, Output = T> + From<u8> + Copy + Ten,
-    >(
+    pub fn until<T: std::ops::Mul<T, Output = T> + Add<T, Output = T> + From<u8> + Copy + Ten>(
         x: &mut &[u8],
         until: u8,
     ) -> T {
-        let mut n = T::default();
+        let mut n = T::from(x.by().ψ() - b'0');
         loop {
             let byte = x.by().ψ();
             if byte == until {
@@ -1063,6 +1122,7 @@ pub mod reading {
         }
     }
 
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn all<
         T: Default + std::ops::Mul<T, Output = T> + Add<T, Output = T> + From<u8> + Copy + Ten,
     >(
@@ -1309,8 +1369,8 @@ impl<'b> TakeLine<'b> for &'b [u8] {
             None if self.is_empty() => None,
             None => Some(std::mem::replace(self, b"")),
             Some(end) => {
-                let line = &self[..end];
-                *self = &self[end + 1..];
+                let line = C! { &self[..end]};
+                *self = C! { &self[end + 1..]};
                 Some(line)
             }
         }
