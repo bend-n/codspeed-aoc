@@ -8,6 +8,7 @@
 )]
 #![feature(
     slice_swap_unchecked,
+    iter_repeat_n,
     generic_const_exprs,
     iter_array_chunks,
     get_many_mut,
@@ -15,6 +16,7 @@
     iter_collect_into,
     let_chains,
     anonymous_lifetime_in_impl_trait,
+    vec_into_raw_parts,
     array_windows,
     slice_take,
     test,
@@ -26,137 +28,77 @@
     hint_assert_unchecked
 )]
 mod util;
-pub mod day8 {
+pub mod day9 {
     use super::util::prelude::*;
-    const SIZE: usize = 50;
-    #[no_mangle]
+
     pub fn part2(i: &str) -> impl Display {
-        let i = i.as_bytes();
-        let mut big: [[(u8, u8); 4]; 123] = [[(0, 0); 4]; 123];
-        let mut lengths = [0; 123];
-        for (row_, i) in unsafe { i.as_chunks_unchecked::<{ SIZE + 1 }>() }
-            .iter()
-            .ι::<u8>()
-        {
-            let row = u8x64::load_or_default(row_);
-            let mut row = row.simd_ne(Simd::splat(b'.')).to_bitmask() & ((1 << 50) - 1);
-            while row != 0 {
-                let x = row.trailing_zeros();
-                row &= !(1 << x);
-                let &el = &row_[x as usize];
-                let l = unsafe { lengths.get_unchecked_mut(el as usize) };
-                C! { big[el as usize][*l] = (i, x as u8) };
-                *l += 1;
+        let i = i.as_bytes().trim_ascii_end();
+        let mut files = Vec::with_capacity(10000);
+        let mut free = Vec::with_capacity(10000);
+        let mut j = 0;
+        i.iter().ι::<usize>().for_each(|(x, i)| {
+            let n = *x - b'0';
+            if i % 2 == 1 {
+                free.push((n, j));
+            } else {
+                files.push((n, j));
             }
-        }
-        let mut anti = [0u64; SIZE];
-        for char in (b'A'..=b'Z').chain(b'a'..=b'z').chain(b'0'..=b'9') {
-            // let memchr = memchr::Memchr::new(char, i);
-            // let wat = memchr.map(split).collect_vec();
-            let all = unsafe {
-                big.get_unchecked(char as usize)
-                    .get_unchecked(..*lengths.get_unchecked(char as usize))
+            j += n as u32;
+        });
+
+        for (size, fat) in files.iter_mut().rev() {
+            let Some((si, &(space, at))) = free
+                .iter()
+                .enumerate()
+                .take_while(|(_, &(_, j))| j <= *fat)
+                .find(|(_, &(s, _))| s >= *size)
+            else {
+                continue;
             };
-            let mut anti = |(x1, y1), (x2, y2)| {
-                let mut x3 = x2 + (x2 - x1);
-                let mut y3 = y2 + (y2 - y1);
-                *C! { &mut anti[y2 as usize] } |= 1 << x2 as u64;
-                while (x3 < SIZE as u8) & (y3 < SIZE as u8) {
-                    anti[y3 as usize] |= 1 << x3 as u64;
-                    x3 += x2 - x1;
-                    y3 += y2 - y1;
-                }
-            };
-            match all {
-                &[] => continue,
-                &[a, b, c, d] => {
-                    let mut one = |i, j| {
-                        anti(i, j);
-                        anti(j, i);
-                    };
-                    one(b, a);
-                    one(c, a);
-                    one(c, b);
-                    one(d, a);
-                    one(d, b);
-                    one(d, c);
-                }
-                &[a, b, c] => {
-                    let mut one = |i: (u8, u8), j: (u8, u8)| {
-                        anti(i, j);
-                        anti(j, i);
-                    };
-                    one(b, a);
-                    one(c, a);
-                    one(c, b);
-                }
-                _ => shucks!(),
-            }
+            free[si as usize] = (space - *size, at + *size as u32);
+            *fat = at;
         }
-        anti.into_iter().map(u64::count_ones).sum::<u32>()
+        files
+            .into_iter()
+            .ι::<u64>()
+            .map(|((size, at), n)| ((size as u64, at as u64), n as u64))
+            .map(|((size, at), n)| n * (at * size + (size * (size - 1)) / 2))
+            .sum::<u64>()
     }
-    use std::simd::prelude::*;
+
     #[no_mangle]
-    pub fn part1(i: &str) -> u32 {
-        let mut big: [[(u8, u8); 4]; 123] = [[(0, 0); 4]; 123];
-        let mut lengths = [0; 123];
-        let i = i.as_bytes();
-        for (row_, i) in unsafe { i.as_chunks_unchecked::<{ SIZE + 1 }>() }
+    pub fn part1(i: &str) -> impl Display {
+        let i = i.as_bytes().trim_ascii_end();
+        const SPACE: u16 = u16::MAX;
+        let map = i
             .iter()
-            .ι::<u8>()
-        {
-            let row = u8x64::load_or_default(row_);
-            let mut row = row.simd_ne(Simd::splat(b'.')).to_bitmask() & ((1 << 50) - 1);
-            while row != 0 {
-                let x = row.trailing_zeros();
-                row &= !(1 << x);
-                let &el = &row_[x as usize];
-                let l = unsafe { lengths.get_unchecked_mut(el as usize) };
-                C! { big[el as usize][*l] = (i, x as u8) };
-                *l += 1;
+            .ι::<u16>()
+            .flat_map(|(x, i)| {
+                let times = (*x - b'0') as usize;
+                std::iter::repeat_n(if i % 2 == 1 { SPACE } else { i / 2 }, times)
+            })
+            .collect::<Vec<_>>();
+        let (map, len, _) = map.into_raw_parts();
+        let eight_bit = unsafe { std::slice::from_raw_parts(map as *const u8, len * 2) };
+        let mut emptys = memchr::memmem::find_iter(eight_bit, &[0xff; 2]).map(|x| x / 2);
+        for i in (0..len).rev() {
+            if unsafe { *map.add(i) == SPACE } {
+                continue;
             }
-        }
-        let mut anti = [0u64; SIZE];
-        for char in (b'A'..=b'Z').chain(b'a'..=b'z').chain(b'0'..=b'9') {
-            // let memchr = memchr::Memchr::new(char, i);
-            // let wat = memchr.map(split).collect_vec();
-            let all = unsafe {
-                big.get_unchecked(char as usize)
-                    .get_unchecked(..*lengths.get_unchecked(char as usize))
-            };
-            // assert_eq!(wat, all);
-            let mut anti = |(x1, y1), (x2, y2): (u8, u8)| {
-                let x3 = x2.wrapping_add(x2.wrapping_sub(x1));
-                let y3 = y2.wrapping_add(y2.wrapping_sub(y1));
-                if (x3 < SIZE as u8) & (y3 < SIZE as u8) {
-                    anti[y3 as usize] |= 1 << x3 as u64;
-                }
-            };
-            match all.len() {
-                0 => continue,
-                4 => {
-                    for i in 0..4 {
-                        for j in 0..i {
-                            let i = all[i];
-                            let j = all[j];
-                            anti(i, j);
-                            anti(j, i);
-                        }
-                    }
-                }
-                3 => {
-                    for i in 0..3 {
-                        for j in 0..i {
-                            let i = all[i];
-                            let j = all[j];
-                            anti(i, j);
-                            anti(j, i);
-                        }
-                    }
-                }
-                _ => shucks!(),
+            let empty = emptys.Δ();
+            if empty > i {
+                break;
             }
+            unsafe { map.add(empty).swap(map.add(i)) };
         }
-        anti.into_iter().map(u64::count_ones).sum::<u32>()
+        unsafe {
+            std::slice::from_raw_parts(map, memchr::memmem::find(eight_bit, &[0xff; 2]).ψ() / 2)
+        }
+        .iter()
+        .copied()
+        .ι::<usize>()
+        .map(|(id, i)| id as usize * i)
+        .sum::<usize>()
+        // 0
     }
 }
