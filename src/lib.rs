@@ -31,74 +31,132 @@ mod util;
 pub mod day9 {
     use super::util::prelude::*;
 
-    pub fn part2(i: &str) -> impl Display {
-        let i = i.as_bytes().trim_ascii_end();
-        let mut files = Vec::with_capacity(10000);
-        let mut free = Vec::with_capacity(10000);
-        let mut j = 0;
-        i.iter().ι::<usize>().for_each(|(x, i)| {
-            let n = *x - b'0';
-            if i % 2 == 1 {
-                free.push((n, j));
-            } else {
-                files.push((n, j));
-            }
-            j += n as u32;
-        });
+    #[no_mangle]
+    pub fn part1(i: &str) -> impl Display {
+        let i = i.as_bytes();
+        let size = memchr::memchr(b'\n', i).ψ();
+        let max = size * (size + 1);
+        unsafe { core::hint::assert_unchecked(i.len() == max) };
+        let get = |j: u16| (j < max as u16).then(|| i[j as usize]);
 
-        for (size, fat) in files.iter_mut().rev() {
-            let Some((si, &(space, at))) = free
-                .iter()
-                .enumerate()
-                .take_while(|(_, &(_, j))| j <= *fat)
-                .find(|(_, &(s, _))| s >= *size)
-            else {
-                continue;
-            };
-            free[si as usize] = (space - *size, at + *size as u32);
-            *fat = at;
+        // fimg::Image::<Vec<u8>, 1>::build(SIZE as _, SIZE as _)
+        //     .buf(
+        //         grid.iter()
+        //             .flat_map(|x| &x[..SIZE])
+        //             .map(|x| (((*x - b'0') as f32 / 10.0) * 255.0) as u8)
+        //             .collect_vec(),
+        //     )
+        //     .scale::<fimg::scale::Nearest>(SIZE as u32 * 8, SIZE as u32 * 8)
+        //     .save("hmm.png");
+        let mut tot = 0;
+        pub fn p1(
+            start: u16,
+            graph: &mut impl Fn(u16) -> [u16; 4],
+            ok: &mut impl Fn(u16, u16) -> bool,
+            end: &mut impl Fn(u16) -> bool,
+            reached: &mut [u8],
+        ) -> u16 {
+            if end(start) && reached[start as usize] == 0 {
+                reached[start as usize] = 1;
+                return 1;
+            } else {
+                graph(start)
+                    .into_iter()
+                    .map(|x| {
+                        if ok(start, x) {
+                            p1(x, graph, ok, end, reached)
+                        } else {
+                            0
+                        }
+                    })
+                    .sum()
+            }
         }
-        files
-            .into_iter()
-            .ι::<u64>()
-            .map(|((size, at), n)| ((size as u64, at as u64), n as u64))
-            .map(|((size, at), n)| n * (at * size + (size * (size - 1)) / 2))
-            .sum::<u64>()
+
+        let mut dp = vec![0; max];
+        // let mut dp = vec![u16::MAX; max];
+        for i in memchr::memchr_iter(b'9', i) {
+            dp.fill(0);
+            tot += p1(
+                i as u16,
+                &mut |i| {
+                    [
+                        i.wrapping_add(1),
+                        i.wrapping_sub(1),
+                        i.wrapping_add(size as u16 + 1),
+                        i.wrapping_sub(size as u16 + 1),
+                    ]
+                },
+                &mut |i1, i2| match get(i2) {
+                    Some(x) => get(i1).ψ().wrapping_sub(x) == 1,
+                    None => false,
+                },
+                &mut |i| get(i) == Some(b'0'),
+                &mut dp,
+            );
+        }
+        tot
     }
 
     #[no_mangle]
-    pub fn part1(i: &str) -> impl Display {
-        let i = i.as_bytes().trim_ascii_end();
-        const SPACE: u16 = u16::MAX;
-        let map = i
-            .iter()
-            .ι::<u16>()
-            .flat_map(|(x, i)| {
-                let times = (*x - b'0') as usize;
-                std::iter::repeat_n(if i % 2 == 1 { SPACE } else { i / 2 }, times)
-            })
-            .collect::<Vec<_>>();
-        let (map, len, _) = map.into_raw_parts();
-        let eight_bit = unsafe { std::slice::from_raw_parts(map as *const u8, len * 2) };
-        let mut emptys = memchr::memmem::find_iter(eight_bit, &[0xff; 2]).map(|x| x / 2);
-        for i in (0..len).rev() {
-            if unsafe { *map.add(i) == SPACE } {
-                continue;
+    pub fn part2(i: &str) -> impl Display {
+        let i = i.as_bytes();
+        let size = memchr::memchr(b'\n', i).ψ();
+        let max = size * (size + 1);
+        unsafe { core::hint::assert_unchecked(i.len() == max) };
+        let get = |j: u16| (j < max as u16).then(|| i[j as usize]);
+        let mut tot = 0;
+
+        pub fn p2(
+            start: u16,
+            graph: &mut impl Fn(u16) -> [u16; 4],
+            ok: &mut impl Fn(u16, u16) -> bool,
+            end: &mut impl Fn(u16) -> bool,
+            dp: &mut [u16],
+        ) -> u16 {
+            if end(start) {
+                return 1;
+            } else {
+                graph(start)
+                    .into_iter()
+                    .map(|x| {
+                        if ok(start, x) {
+                            #[allow(irrefutable_let_patterns)]
+                            if let x = dp[x as usize]
+                                && x != 0xffff
+                            {
+                                return x;
+                            }
+                            let n = p2(x, graph, ok, end, dp);
+                            dp[x as usize] = n;
+                            n
+                        } else {
+                            0
+                        }
+                    })
+                    .sum()
             }
-            let empty = emptys.Δ();
-            if empty > i {
-                break;
-            }
-            unsafe { map.add(empty).swap(map.add(i)) };
         }
-        unsafe {
-            std::slice::from_raw_parts(map, memchr::memmem::find(eight_bit, &[0xff; 2]).ψ() / 2)
+        let mut dp = vec![u16::MAX; max];
+        for i in memchr::memchr_iter(b'9', i) {
+            tot += p2(
+                i as u16,
+                &mut |i| {
+                    [
+                        i.wrapping_add(1),
+                        i.wrapping_sub(1),
+                        i.wrapping_add(size as u16 + 1),
+                        i.wrapping_sub(size as u16 + 1),
+                    ]
+                },
+                &mut |i1, i2| match get(i2) {
+                    Some(x) => get(i1).ψ().wrapping_sub(x) == 1,
+                    None => false,
+                },
+                &mut |i| get(i) == Some(b'0'),
+                &mut dp,
+            );
         }
-        .iter()
-        .copied()
-        .ι::<usize>()
-        .map(|(id, i)| id as usize * i)
-        .sum::<usize>()
-        // 0
+        tot
     }
 }
