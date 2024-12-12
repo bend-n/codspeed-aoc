@@ -28,7 +28,7 @@
     hint_assert_unchecked
 )]
 mod util;
-pub mod day9 {
+pub mod day10 {
     use super::util::prelude::*;
 
     #[no_mangle]
