@@ -29,122 +29,119 @@
     hint_assert_unchecked
 )]
 mod util;
-pub mod day12 {
+pub mod day13 {
+    use super::util;
     use super::util::prelude::*;
-
     const SIZE: usize = 140;
+
+    fn two([a, b]: [u8; 2]) -> i64 {
+        (a - b'0') as i64 * 10 + (b - b'0') as i64
+    }
+
     #[no_mangle]
     pub fn part2(i: &str) -> impl Display {
-        fn explore(
-            (x, y): (usize, usize),
-            handled: &mut [[bool; 140]; 140],
-            char: u8,
-            get: &mut impl FnMut(usize, usize) -> Option<u8>,
-            tot: &mut u32,
-            count: &mut u32,
-        ) {
-            if get(x, y) == Some(char) && handled[y][x] == false {
-                handled[y][x] = true;
-                // αbβ
-                // a.c
-                // γdδ
-                let α = get(x.wrapping_sub(1), y.wrapping_sub(1)) != Some(char);
-                let β = get(x.wrapping_add(1), y.wrapping_sub(1)) != Some(char);
-                let γ = get(x.wrapping_sub(1), y.wrapping_add(1)) != Some(char);
-                let δ = get(x.wrapping_add(1), y.wrapping_add(1)) != Some(char);
-
-                let a = get(x.wrapping_sub(1), y) != Some(char);
-                let b = get(x, y.wrapping_sub(1)) != Some(char);
-                let c = get(x.wrapping_add(1), y) != Some(char);
-                let d = get(x, y.wrapping_add(1)) != Some(char);
-                fn u(a: bool) -> u32 {
-                    a as u32
+        let mut i = i.as_bytes();
+        // let i = i.as_chunks_unchecked::<{ SIZE + 1 }>();
+        // let get = |x, y| (x < SIZE && y < SIZE).then(|| i[y][x]);
+        let mut sum = 0;
+        for _ in 0..340 {
+            let a_x = two(util::nail(C! { &i["button a: x+".len()..]}));
+            let a_y = two(util::nail(C! { &i["button a: x+55, y+".len()..]}));
+            let b_x = two(util::nail(
+                C! { &i["button a: x+55, y+jj\nbutton b: x+".len()..]},
+            ));
+            let b_y = two(util::nail(
+                C! { &i["button a: x+55, y+jj\nbutton b: x+44, y+".len()..]},
+            ));
+            i.skip("button a: x+55, y+jj\nbutton b: x+44, y+jj\nprize: x=".len());
+            let p_x: i64 = reading::until::<i64>(&mut i, b',') + 10000000000000;
+            i.skip(" y=".len());
+            let p_y: i64 = reading::until::<i64>(&mut i, b'\n') + 10000000000000;
+            #[inline]
+            fn dmod(a: i64, b: i64) -> (i64, i64) {
+                unsafe {
+                    (
+                        core::intrinsics::unchecked_div(a, b),
+                        core::intrinsics::unchecked_rem(a, b),
+                    )
                 }
-                // *tot += u(a) + u(b) + u(c) + u(d);
-
-                *tot += u(a & b) + u(b & c) + u(c & d) + u(a & d);
-                *tot += u(!a & !b & α) + u(!b & !c & β) + u(!c & !d & δ) + u(!a & !d & γ);
-                *count += 1;
-
-                explore((x.wrapping_sub(1), y), handled, char, get, tot, count);
-                explore((x + 1, y), handled, char, get, tot, count);
-                explore((x, y + 1), handled, char, get, tot, count);
-                explore((x, y.wrapping_sub(1)), handled, char, get, tot, count);
             }
-        }
+            // a_x * α + b_x * β = p_x
+            // a_y * α + b_y * β = p_y
+            let (β, ok) = dmod(
+                a_y * p_x - a_x * p_y, //
+                a_y * b_x - a_x * b_y,
+            );
+            if ok == 0 {
+                let (α, ok) = {
+                    dmod(
+                        b_y * p_x - b_x * p_y, //
+                        a_x * b_y - a_y * b_x,
+                    )
+                };
+                if ok == 0 {
+                    sum += 3 * α + β;
+                }
+            }
 
-        let grid = unsafe { i.as_bytes().as_chunks_unchecked::<{ SIZE + 1 }>() };
-        let handled = &mut [[false; SIZE]; SIZE];
-        let mut get = |x: usize, y: usize| {
-            unsafe { core::hint::assert_unchecked(grid.len() == SIZE) };
-            (x < SIZE && y < SIZE).then(|| grid[y][x])
-        };
-        (0..SIZE)
-            .flat_map(move |y| (0..SIZE).map(move |x| (x, y)))
-            .filter_map(|(x, y)| {
-                let mut sides = 0;
-                let mut area = 0;
-                (!handled[y][x]).then(|| {
-                    let char = C! { grid[y][x]};
-                    explore((x, y), handled, char, &mut get, &mut sides, &mut area);
-                    area * sides
-                })
-            })
-            .sum::<u32>()
+            if i.is_empty() {
+                break;
+            }
+            i.skip(1);
+        }
+        sum
     }
+
     #[no_mangle]
     pub fn part1(i: &str) -> impl Display {
-        fn explore(
-            (x, y): (usize, usize),
-            handled: &mut [[bool; 140]; 140],
-            char: u8,
-            get: &mut impl FnMut(usize, usize) -> Option<u8>,
-            tot: &mut u32,
-            count: &mut u32,
-        ) {
-            if get(x, y) == Some(char) && handled[y][x] == false {
-                handled[y][x] = true;
-                // αbβ
-                // a.c
-                // γdδ
-                let a = get(x.wrapping_sub(1), y) != Some(char);
-                let b = get(x, y.wrapping_sub(1)) != Some(char);
-                let c = get(x.wrapping_add(1), y) != Some(char);
-                let d = get(x, y.wrapping_add(1)) != Some(char);
-                fn u(a: bool) -> u32 {
-                    a as u32
+        let mut i = i.as_bytes();
+        // let i = i.as_chunks_unchecked::<{ SIZE + 1 }>();
+        // let get = |x, y| (x < SIZE && y < SIZE).then(|| i[y][x]);
+        let mut sum = 0;
+        for _ in 0..340 {
+            let a_x = two(util::nail(C! { &i["button a: x+".len()..]}));
+            let a_y = two(util::nail(C! { &i["button a: x+55, y+".len()..]}));
+            let b_x = two(util::nail(
+                C! { &i["button a: x+55, y+jj\nbutton b: x+".len()..]},
+            ));
+            let b_y = two(util::nail(
+                C! { &i["button a: x+55, y+jj\nbutton b: x+44, y+".len()..]},
+            ));
+            i.skip("button a: x+55, y+jj\nbutton b: x+44, y+jj\nprize: x=".len());
+            let p_x: i64 = reading::until(&mut i, b',');
+            i.skip(" y=".len());
+            let p_y: i64 = reading::until(&mut i, b'\n');
+            #[inline]
+            fn dmod(a: i64, b: i64) -> (i64, i64) {
+                unsafe {
+                    (
+                        core::intrinsics::unchecked_div(a, b),
+                        core::intrinsics::unchecked_rem(a, b),
+                    )
                 }
-                *tot += u(a) + u(b) + u(c) + u(d);
-
-                // *tot += u(a & b) + u(b & c) + u(c & d) + u(a & d);
-                // *tot += u(!a & !b & α) + u(!b & !c & β) + u(!c & !d & δ) + u(!a & !d & γ);
-                *count += 1;
-
-                explore((x.wrapping_sub(1), y), handled, char, get, tot, count);
-                explore((x + 1, y), handled, char, get, tot, count);
-                explore((x, y + 1), handled, char, get, tot, count);
-                explore((x, y.wrapping_sub(1)), handled, char, get, tot, count);
             }
-        }
+            // a_x * α + b_x * β = p_x
+            // a_y * α + b_y * β = p_y
+            let (β, ok) = dmod(
+                a_y * p_x - a_x * p_y, //
+                a_y * b_x - a_x * b_y,
+            );
+            if ok == 0 {
+                let α = unsafe {
+                    core::intrinsics::unchecked_div(
+                        b_y * p_x - b_x * p_y, //
+                        a_x * b_y - a_y * b_x,
+                    )
+                };
+                sum += 3 * α + β;
+            }
 
-        let grid = unsafe { i.as_bytes().as_chunks_unchecked::<{ SIZE + 1 }>() };
-        let handled = &mut [[false; SIZE]; SIZE];
-        let mut get = |x: usize, y: usize| {
-            unsafe { core::hint::assert_unchecked(grid.len() == SIZE) };
-            (x < SIZE && y < SIZE).then(|| grid[y][x])
-        };
-        (0..SIZE)
-            .flat_map(move |y| (0..SIZE).map(move |x| (x, y)))
-            .filter_map(|(x, y)| {
-                let mut sides = 0;
-                let mut area = 0;
-                (!handled[y][x]).then(|| {
-                    let char = C! { grid[y][x]};
-                    explore((x, y), handled, char, &mut get, &mut sides, &mut area);
-                    area * sides
-                })
-            })
-            .sum::<u32>()
+            if i.is_empty() {
+                break;
+            }
+            i.skip(1);
+        }
+        sum
     }
 }
 
