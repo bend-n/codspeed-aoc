@@ -29,147 +29,269 @@
     hint_assert_unchecked
 )]
 mod util;
-pub mod day13 {
+pub mod day14 {
     use super::util;
     use super::util::prelude::*;
-    const SIZE: usize = 140;
-
-    fn two([a, b]: [u8; 2]) -> i64 {
-        (a - b'0') as i64 * 10 + (b - b'0') as i64
+    use std::ops::Neg;
+    const W: i32 = 101;
+    const H: i32 = 103;
+    #[no_mangle]
+    pub fn run(i: &str) -> impl Display {
+        let mut grids = [0; 4];
+        let mut p = i.as_bytes().as_ptr();
+        unsafe {
+            for j in 0..500 {
+                p = p.add(2);
+                let px = match std::slice::from_raw_parts(p, 3) {
+                    [a, b',', _] => {
+                        p = p.add(2);
+                        *a - b'0'
+                    }
+                    [a, b, b','] => {
+                        p = p.add(3);
+                        (*a - b'0') * 10 + (*b - b'0')
+                    }
+                    [a, b, c] => {
+                        p = p.add(4);
+                        ((*a - b'0') * 10 + (*b - b'0')) * 10 + (*c - b'0')
+                    }
+                    _ => shucks!(),
+                };
+                let py = match std::slice::from_raw_parts(p, 3) {
+                    [a, b' ', _] => {
+                        p = p.add(2 + 2);
+                        *a - b'0'
+                    }
+                    [a, b, b' '] => {
+                        p = p.add(3 + 2);
+                        (*a - b'0') * 10 + (*b - b'0')
+                    }
+                    [a, b, c] => {
+                        p = p.add(4 + 2);
+                        ((*a - b'0') * 10 + (*b - b'0')) * 10 + (*c - b'0')
+                    }
+                    _ => shucks!(),
+                };
+                let vx = match std::slice::from_raw_parts(p, 3) {
+                    [a, b',', _] => {
+                        p = p.add(2);
+                        (*a - b'0') as i32
+                    }
+                    [b'-', a, b','] => {
+                        p = p.add(3);
+                        ((*a - b'0') as i32).neg()
+                    }
+                    [b'-', a, b] => {
+                        p = p.add(4);
+                        (((*a - b'0') * 10 + (*b - b'0')) as i32).neg()
+                    }
+                    [a, b, b','] => {
+                        p = p.add(3);
+                        ((*a - b'0') * 10 + (*b - b'0')) as i32
+                    }
+                    _ => shucks!(),
+                };
+                let vy = match std::slice::from_raw_parts(p, 3) {
+                    [a, b'\n', _] => {
+                        p = p.add(2);
+                        (*a - b'0') as i32
+                    }
+                    [b'-', a, b'\n'] => {
+                        p = p.add(3);
+                        ((*a - b'0') as i8).neg() as i32
+                    }
+                    [b'-', a, b] => {
+                        p = p.add(4);
+                        (((*a - b'0') * 10 + (*b - b'0')) as i32).neg()
+                        // .rem_euclid(101) as u8
+                    }
+                    [a, b, b'\n'] => {
+                        p = p.add(3);
+                        ((*a - b'0') * 10 + (*b - b'0')) as i32
+                    }
+                    _ => shucks!(),
+                };
+                let x = (px as i32 + vx * 100).rem_euclid(W);
+                let y = (py as i32 + vy * 100).rem_euclid(H);
+                let w = W / 2;
+                let h = H / 2;
+                if x < w && y < h {
+                    grids[0] += 1;
+                } else if x < w && y > h {
+                    grids[1] += 1;
+                } else if x > w && y < h {
+                    grids[2] += 1;
+                } else if x > w && y > h {
+                    grids[3] += 1;
+                }
+            }
+        }
+        grids.iter().product::<u32>()
     }
 
     #[no_mangle]
-    pub fn part2(i: &str) -> impl Display {
-        let mut i = i.as_bytes();
-        // let i = i.as_chunks_unchecked::<{ SIZE + 1 }>();
-        // let get = |x, y| (x < SIZE && y < SIZE).then(|| i[y][x]);
-        let mut sum = 0;
-        for _ in 0..340 {
-            let a_x = two(util::nail(C! { &i["button a: x+".len()..]}));
-            let a_y = two(util::nail(C! { &i["button a: x+55, y+".len()..]}));
-            let b_x = two(util::nail(
-                C! { &i["button a: x+55, y+jj\nbutton b: x+".len()..]},
-            ));
-            let b_y = two(util::nail(
-                C! { &i["button a: x+55, y+jj\nbutton b: x+44, y+".len()..]},
-            ));
-            i.skip("button a: x+55, y+jj\nbutton b: x+44, y+jj\nprize: x=".len());
-            let p_x: i64 = reading::until::<i64>(&mut i, b',') + 10000000000000;
-            i.skip(" y=".len());
-            let p_y: i64 = reading::until::<i64>(&mut i, b'\n') + 10000000000000;
-            #[inline]
-            fn dmod(a: i64, b: i64) -> (i64, i64) {
-                unsafe {
-                    (
-                        core::intrinsics::unchecked_div(a, b),
-                        core::intrinsics::unchecked_rem(a, b),
-                    )
-                }
-            }
-            // a_x * α + b_x * β = p_x
-            // a_y * α + b_y * β = p_y
-            let (β, ok) = dmod(
-                a_y * p_x - a_x * p_y, //
-                a_y * b_x - a_x * b_y,
-            );
-            if ok == 0 {
-                let (α, ok) = {
-                    dmod(
-                        b_y * p_x - b_x * p_y, //
-                        a_x * b_y - a_y * b_x,
-                    )
+    pub fn p2(i: &str) -> impl Display {
+        const W: u8 = 101;
+        const H: u8 = 103;
+        let mut positions_x = [0; 500];
+        let mut velocities_x = [0; 500];
+        let mut positions_y = [0; 500];
+        let mut velocities_y = [0; 500];
+        let mut p = i.as_bytes().as_ptr();
+        unsafe {
+            for j in 0..500 {
+                p = p.add(2);
+                positions_x[j] = match std::slice::from_raw_parts(p, 3) {
+                    [a, b',', _] => {
+                        p = p.add(2);
+                        *a - b'0'
+                    }
+                    [a, b, b','] => {
+                        p = p.add(3);
+                        (*a - b'0') * 10 + (*b - b'0')
+                    }
+                    [a, b, c] => {
+                        p = p.add(4);
+                        ((*a - b'0') * 10 + (*b - b'0')) * 10 + (*c - b'0')
+                    }
+                    _ => shucks!(),
                 };
-                if ok == 0 {
-                    sum += 3 * α + β;
-                }
-            }
-
-            if i.is_empty() {
-                break;
-            }
-            i.skip(1);
-        }
-        sum
-    }
-
-    #[no_mangle]
-    pub fn part1(i: &str) -> impl Display {
-        let mut i = i.as_bytes();
-        // let i = i.as_chunks_unchecked::<{ SIZE + 1 }>();
-        // let get = |x, y| (x < SIZE && y < SIZE).then(|| i[y][x]);
-        let mut sum = 0;
-        for _ in 0..340 {
-            let a_x = two(util::nail(C! { &i["button a: x+".len()..]}));
-            let a_y = two(util::nail(C! { &i["button a: x+55, y+".len()..]}));
-            let b_x = two(util::nail(
-                C! { &i["button a: x+55, y+jj\nbutton b: x+".len()..]},
-            ));
-            let b_y = two(util::nail(
-                C! { &i["button a: x+55, y+jj\nbutton b: x+44, y+".len()..]},
-            ));
-            i.skip("button a: x+55, y+jj\nbutton b: x+44, y+jj\nprize: x=".len());
-            let p_x: i64 = reading::until(&mut i, b',');
-            i.skip(" y=".len());
-            let p_y: i64 = reading::until(&mut i, b'\n');
-            #[inline]
-            fn dmod(a: i64, b: i64) -> (i64, i64) {
-                unsafe {
-                    (
-                        core::intrinsics::unchecked_div(a, b),
-                        core::intrinsics::unchecked_rem(a, b),
-                    )
-                }
-            }
-            // a_x * α + b_x * β = p_x
-            // a_y * α + b_y * β = p_y
-            let (β, ok) = dmod(
-                a_y * p_x - a_x * p_y, //
-                a_y * b_x - a_x * b_y,
-            );
-            if ok == 0 {
-                let α = unsafe {
-                    core::intrinsics::unchecked_div(
-                        b_y * p_x - b_x * p_y, //
-                        a_x * b_y - a_y * b_x,
-                    )
+                positions_y[j] = match std::slice::from_raw_parts(p, 3) {
+                    [a, b' ', _] => {
+                        p = p.add(2 + 2);
+                        *a - b'0'
+                    }
+                    [a, b, b' '] => {
+                        p = p.add(3 + 2);
+                        (*a - b'0') * 10 + (*b - b'0')
+                    }
+                    [a, b, c] => {
+                        p = p.add(4 + 2);
+                        ((*a - b'0') * 10 + (*b - b'0')) * 10 + (*c - b'0')
+                    }
+                    _ => shucks!(),
                 };
-                sum += 3 * α + β;
+                velocities_x[j] = match std::slice::from_raw_parts(p, 3) {
+                    [a, b',', _] => {
+                        p = p.add(2);
+                        a - b'0'
+                    }
+                    [b'-', a, b','] => {
+                        p = p.add(3);
+                        ((*a - b'0') as i8).neg().rem_euclid(103) as u8
+                    }
+                    [b'-', a, b] => {
+                        p = p.add(4);
+                        ((((*a - b'0') * 10 + (*b - b'0')) as i8)
+                            .neg()
+                            .rem_euclid(103)) as u8
+                    }
+                    [a, b, b','] => {
+                        p = p.add(3);
+                        (*a - b'0') * 10 + (*b - b'0')
+                    }
+                    _ => shucks!(),
+                };
+                velocities_y[j] = match std::slice::from_raw_parts(p, 3) {
+                    [a, b'\n', _] => {
+                        p = p.add(2);
+                        a - b'0'
+                    }
+                    [b'-', a, b'\n'] => {
+                        p = p.add(3);
+                        ((*a - b'0') as i8).neg().rem_euclid(101) as u8
+                    }
+                    [b'-', a, b] => {
+                        p = p.add(4);
+                        (((*a - b'0') * 10 + (*b - b'0')) as i8)
+                            .neg()
+                            .rem_euclid(101) as u8
+                    }
+                    [a, b, b'\n'] => {
+                        p = p.add(3);
+                        (*a - b'0') * 10 + (*b - b'0')
+                    }
+                    _ => shucks!(),
+                };
             }
-
-            if i.is_empty() {
-                break;
-            }
-            i.skip(1);
         }
-        sum
+        use std::simd::prelude::*;
+        let (px, rpx) = positions_x.as_chunks_mut::<32>();
+        let (vx, rvx) = velocities_x.as_chunks_mut::<32>();
+        let mut px: [u8x32; 15] = std::array::from_fn(|i| u8x32::from_array(px[i]));
+        let vx: [u8x32; 15] = std::array::from_fn(|i| u8x32::from_array(vx[i]));
+        let bx = (1..W)
+            .map(|_| {
+                px.iter_mut()
+                    .zip(vx)
+                    .map(|(px, vx)| {
+                        *px += vx;
+                        *px = px
+                            .simd_ge(u8x32::splat(W))
+                            .select(*px - u8x32::splat(W), *px);
+                        *px
+                    })
+                    .map(|x| unsafe {
+                        u64x4::from(core::arch::x86_64::_mm256_sad_epu8(
+                            x.into(),
+                            u8x32::splat(W as u8 / 2).into(),
+                        ))
+                    })
+                    .fold(u64x4::default(), |acc, x| acc + x)
+                    .reduce_sum()
+                    + rpx
+                        .iter_mut()
+                        .zip(&*rvx)
+                        .map(move |(x, vx)| {
+                            *x += vx;
+                            *x %= W;
+                            x.abs_diff(W / 2) as u64
+                        })
+                        .sum::<u64>()
+            })
+            .ι1::<u32>()
+            .min_by_key(|&(x, _)| x)
+            .unwrap()
+            .1 as i32;
+
+        let (py, rpy) = positions_y.as_chunks_mut::<32>();
+        let (vy, rvy) = velocities_y.as_chunks_mut::<32>();
+        let mut py: [u8x32; 15] = std::array::from_fn(|i| u8x32::from_array(py[i]));
+        let vy: [u8x32; 15] = std::array::from_fn(|i| u8x32::from_array(vy[i]));
+
+        let by = (1..H)
+            .map(|_| {
+                py.iter_mut()
+                    .zip(vy)
+                    .map(|(py, vy)| {
+                        *py += vy;
+                        *py = py
+                            .simd_ge(u8x32::splat(H))
+                            .select(*py - u8x32::splat(H), *py);
+                        *py
+                    })
+                    .map(|x| unsafe {
+                        u64x4::from(core::arch::x86_64::_mm256_sad_epu8(
+                            x.into(),
+                            u8x32::splat(H as u8 / 2).into(),
+                        ))
+                    })
+                    .fold(u64x4::default(), |acc, x| acc + x)
+                    .reduce_sum()
+                    + rpy
+                        .iter_mut()
+                        .zip(&*rvy)
+                        .map(move |(x, vx)| {
+                            *x += vx;
+                            *x %= H;
+                            x.abs_diff(H / 2) as u64
+                        })
+                        .sum::<u64>()
+            })
+            .ι1::<u32>()
+            .min_by_key(|&(x, _)| x)
+            .unwrap()
+            .1 as i32;
+        bx + ((51 * (by - bx)) % H as i32) * W as i32
     }
 }
-
-// static mut map: std::sync::OnceLock<HashMap<(u64, u8), u64>> = std::sync::OnceLock::new();
-// fn rocc(one: u64, iters: u8) -> u64 {
-//     if let Some(&x) = unsafe { map.get_mut().ψ().get(&(one, iters)) } {
-//         return x;
-//     }
-//     let answer = {
-//         match iters.checked_sub(1) {
-//             Some(iters) if one == 0 => rocc(1, iters),
-//             Some(iters)
-//                 if let ͱ = one.ͱ() as usize
-//                     && ͱ % 2 == 0 =>
-//             {
-//                 let pow = util::powers[ͱ / 2];
-//                 rocc(one / pow, iters) + rocc(one % pow, iters)
-//             }
-//             Some(iters) if iters > 1 && (one * 2024).ͱ() % 2 == 1 => {
-//                 // skip
-//                 let one = one * 2024 * 2024;
-//                 let pow = util::powers[one.ͱ() as usize / 2];
-//                 rocc(one / pow, iters - 2) + rocc(one % pow, iters - 2)
-//             }
-//             Some(iters) => rocc(one * 2024, iters),
-//             None => 1,
-//         }
-//     };
-//     unsafe { map.get_mut().ψ().insert((one, iters), answer) };
-//     answer
-// }
