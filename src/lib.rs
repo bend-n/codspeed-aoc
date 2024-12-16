@@ -36,7 +36,7 @@ pub mod day14 {
     const W: i32 = 101;
     const H: i32 = 103;
     #[no_mangle]
-    pub fn run(i: &str) -> impl Display {
+    pub fn part1(i: &str) -> impl Display {
         let mut grids = [0; 4];
         let mut p = i.as_bytes().as_ptr();
         unsafe {
@@ -130,7 +130,7 @@ pub mod day14 {
     }
 
     #[no_mangle]
-    pub fn p2(i: &str) -> impl Display {
+    pub fn part2(i: &str) -> impl Display {
         const W: u8 = 101;
         const H: u8 = 103;
         let mut positions_x = [0; 500];

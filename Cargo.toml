@@ -10,3 +10,9 @@ car = "0.1.1"
 memchr = "2.7.4"
 rayon = "1.10.0"
 rustc-hash = "2.1.0"
+criterion = { version = "2.7.2", package = "codspeed-criterion-compat", default-features = false }
+
+
+[[bench]]
+name = "bench"
+harness = false
