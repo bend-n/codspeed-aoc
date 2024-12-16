@@ -29,269 +29,420 @@
     hint_assert_unchecked
 )]
 mod util;
-pub mod day14 {
+pub mod day15 {
     use super::util;
     use super::util::prelude::*;
-    use std::ops::Neg;
-    const W: i32 = 101;
-    const H: i32 = 103;
-    #[no_mangle]
-    pub fn part1(i: &str) -> impl Display {
-        let mut grids = [0; 4];
-        let mut p = i.as_bytes().as_ptr();
-        unsafe {
-            for j in 0..500 {
-                p = p.add(2);
-                let px = match std::slice::from_raw_parts(p, 3) {
-                    [a, b',', _] => {
-                        p = p.add(2);
-                        *a - b'0'
+    const SIZE: usize = 50;
+    pub fn part2(i: &str) -> impl Display {
+        let i = i.as_bytes();
+        let bot = memchr::memchr(b'@', i).ψ();
+        let (mut x, mut y) = ((bot % (SIZE + 1)) * 2, bot / (SIZE + 1));
+        let grid = unsafe {
+            i[..(SIZE + 1) * SIZE]
+                .array_chunks::<{ SIZE + 1 }>()
+                .flat_map(|x| {
+                    x.iter().take(SIZE).copied().flat_map(|x| match x {
+                        b'#' => [x; 2],
+                        b'O' => *b"[]",
+                        b'@' | b'.' => *b"..",
+                        _ => shucks!(),
+                    })
+                })
+                .collect::<Vec<_>>()
+                .leak()
+                .as_chunks_unchecked_mut::<{ SIZE * 2 }>()
+        };
+        // for y in 0..SIZE {
+        //     for x in 0..SIZE * 2 {
+        //         if (px, py) == (x, y) {
+        //             print!("@");
+        //         } else {
+        //             print!("{}", grid[y][x] as char);
+        //         }
+        //     }
+        //     println!();
+        // }
+        // println!("{grid/:?}");
+        // let grid = i[..(SIZE + 1) * SIZE]
+        //     .to_vec()
+        //     .leak()
+        //     .as_chunks_unchecked_mut::<{ SIZE + 1 }>();
+        // grid[y][x * 2] = b'.';
+        let i = &i[((SIZE + 1) * SIZE) + 1..];
+        #[no_mangle]
+        fn push(
+            (x, y): (usize, usize),
+            dir: Dir,
+            grid: &mut [[u8; SIZE * 2]],
+            commit: bool,
+        ) -> bool {
+            match dir {
+                Dir::N => {
+                    macro_rules! set {
+                        () => {{
+                            grid[y - 1][x] = b'[';
+                            grid[y - 1][x + 1] = b']';
+                            grid[y][x] = b'.';
+                            grid[y][x + 1] = b'.';
+                        }};
                     }
-                    [a, b, b','] => {
-                        p = p.add(3);
-                        (*a - b'0') * 10 + (*b - b'0')
+                    match [grid[y - 1][x], grid[y - 1][x + 1]] {
+                        [_, b'#'] | [b'#', _] => {}
+                        [b'.', b'.'] => {
+                            if commit {
+                                set!()
+                            }
+                            return true;
+                        }
+                        [b']', b'['] => {
+                            let val = push((x - 1, y - 1), dir, grid, false)
+                                && push((x + 1, y - 1), dir, grid, false);
+                            if commit && val {
+                                push((x - 1, y - 1), dir, grid, commit);
+                                push((x + 1, y - 1), dir, grid, commit);
+                                set!();
+                            }
+                            return val;
+                        }
+                        [b']', b'.'] => {
+                            let val = push((x - 1, y - 1), dir, grid, commit);
+                            if commit && val {
+                                set!()
+                            }
+                            return val;
+                        }
+                        [b'.', b'['] => {
+                            let val = push((x + 1, y - 1), dir, grid, commit);
+                            if commit && val {
+                                set!()
+                            }
+                            return val;
+                        }
+                        // "simple" case
+                        [b'[', b']'] => {
+                            let val = push((x, y - 1), dir, grid, commit);
+                            if val && commit {
+                                set!()
+                            }
+                            return val;
+                        }
+                        x => shucks!("{x:?}"),
                     }
-                    [a, b, c] => {
-                        p = p.add(4);
-                        ((*a - b'0') * 10 + (*b - b'0')) * 10 + (*c - b'0')
+                }
+                Dir::S => {
+                    macro_rules! set {
+                        () => {{
+                            grid[y + 1][x] = b'[';
+                            grid[y + 1][x + 1] = b']';
+                            grid[y][x] = b'.';
+                            grid[y][x + 1] = b'.';
+                        }};
                     }
-                    _ => shucks!(),
-                };
-                let py = match std::slice::from_raw_parts(p, 3) {
-                    [a, b' ', _] => {
-                        p = p.add(2 + 2);
-                        *a - b'0'
+                    match [grid[y + 1][x], grid[y + 1][x + 1]] {
+                        [_, b'#'] | [b'#', _] => {}
+                        [b'.', b'.'] => {
+                            if commit {
+                                set!()
+                            }
+                            return true;
+                            // swap(&mut grid[y - 1][x], &mut grid[y][x]),
+                        }
+                        [b']', b'['] => {
+                            let val = push((x - 1, y + 1), dir, grid, false)
+                                && push((x + 1, y + 1), dir, grid, false);
+                            if commit && val {
+                                push((x - 1, y + 1), dir, grid, commit);
+                                push((x + 1, y + 1), dir, grid, commit);
+                                set!()
+                            }
+                            return val;
+                        }
+                        [b']', b'.'] => {
+                            let val = push((x - 1, y + 1), dir, grid, commit);
+                            if commit && val {
+                                set!()
+                            }
+                            return val;
+                        }
+                        [b'.', b'['] => {
+                            let val = push((x + 1, y + 1), dir, grid, commit);
+                            if commit && val {
+                                set!()
+                            }
+                            return val;
+                        }
+                        [b'[', b']'] => {
+                            let val = push((x, y + 1), dir, grid, commit);
+                            if val && commit {
+                                set!()
+                            }
+                            return val;
+                        }
+                        x => shucks!("{x:?}"),
                     }
-                    [a, b, b' '] => {
-                        p = p.add(3 + 2);
-                        (*a - b'0') * 10 + (*b - b'0')
+                }
+                Dir::E => {
+                    macro_rules! set {
+                        () => {{
+                            grid[y][x + 2] = b']';
+                            grid[y][x + 1] = b'[';
+                            grid[y][x] = b'.';
+                        }};
                     }
-                    [a, b, c] => {
-                        p = p.add(4 + 2);
-                        ((*a - b'0') * 10 + (*b - b'0')) * 10 + (*c - b'0')
+                    match grid[y][x + 2] {
+                        b'.' => {
+                            set!();
+                            return true;
+                            // swap(&mut grid[y - 1][x], &mut grid[y][x]),
+                        }
+                        b'[' => {
+                            if push((x + 2, y), dir, grid, true) {
+                                set!();
+                                return true;
+                            }
+                        }
+                        b'#' => {}
+                        x => shucks!("{}", x as char),
                     }
-                    _ => shucks!(),
-                };
-                let vx = match std::slice::from_raw_parts(p, 3) {
-                    [a, b',', _] => {
-                        p = p.add(2);
-                        (*a - b'0') as i32
+                }
+
+                Dir::W => {
+                    macro_rules! set {
+                        () => {{
+                            grid[y][x - 1] = b'[';
+                            grid[y][x] = b']';
+                            grid[y][x + 1] = b'.';
+                        }};
                     }
-                    [b'-', a, b','] => {
-                        p = p.add(3);
-                        ((*a - b'0') as i32).neg()
+                    match grid[y][x - 1] {
+                        b'.' => {
+                            set!();
+                            return true;
+                            // swap(&mut grid[y - 1][x], &mut grid[y][x]),
+                        }
+                        b']' => {
+                            if push((x - 2, y), dir, grid, commit) {
+                                set!();
+                                return true;
+                            }
+                        }
+                        b'#' => {}
+                        x => shucks!("{}", x as char),
                     }
-                    [b'-', a, b] => {
-                        p = p.add(4);
-                        (((*a - b'0') * 10 + (*b - b'0')) as i32).neg()
-                    }
-                    [a, b, b','] => {
-                        p = p.add(3);
-                        ((*a - b'0') * 10 + (*b - b'0')) as i32
-                    }
-                    _ => shucks!(),
-                };
-                let vy = match std::slice::from_raw_parts(p, 3) {
-                    [a, b'\n', _] => {
-                        p = p.add(2);
-                        (*a - b'0') as i32
-                    }
-                    [b'-', a, b'\n'] => {
-                        p = p.add(3);
-                        ((*a - b'0') as i8).neg() as i32
-                    }
-                    [b'-', a, b] => {
-                        p = p.add(4);
-                        (((*a - b'0') * 10 + (*b - b'0')) as i32).neg()
-                        // .rem_euclid(101) as u8
-                    }
-                    [a, b, b'\n'] => {
-                        p = p.add(3);
-                        ((*a - b'0') * 10 + (*b - b'0')) as i32
-                    }
-                    _ => shucks!(),
-                };
-                let x = (px as i32 + vx * 100).rem_euclid(W);
-                let y = (py as i32 + vy * 100).rem_euclid(H);
-                let w = W / 2;
-                let h = H / 2;
-                if x < w && y < h {
-                    grids[0] += 1;
-                } else if x < w && y > h {
-                    grids[1] += 1;
-                } else if x > w && y < h {
-                    grids[2] += 1;
-                } else if x > w && y > h {
-                    grids[3] += 1;
                 }
             }
+            false
         }
-        grids.iter().product::<u32>()
+        for input in i {
+            // println!("{}", *input as char);
+            match input {
+                b'<' => match grid[y][x - 1] {
+                    b'.' => x = x - 1,
+                    b'#' => (),
+                    b']' => {
+                        if push((x - 2, y), Dir::W, grid, true) {
+                            x = x - 1;
+                        }
+                    }
+                    x => shucks!("{}", x as char),
+                },
+                b'>' => match grid[y][x + 1] {
+                    b'.' => x = x + 1,
+                    b'#' => (),
+                    b'[' => {
+                        if push((x + 1, y), Dir::E, grid, true) {
+                            x = x + 1;
+                        }
+                    }
+                    x => shucks!("{}", x as char),
+                },
+
+                b'^' => match grid[y - 1][x] {
+                    b'.' => y = y - 1,
+                    b'#' => (),
+                    b']' => {
+                        if push((x - 1, y - 1), Dir::N, grid, true) {
+                            y = y - 1;
+                        }
+                    }
+                    b'[' => {
+                        if push((x, y - 1), Dir::N, grid, true) {
+                            y = y - 1;
+                        }
+                    }
+                    x => shucks!("{}", x as char),
+                },
+                b'v' => match grid[y + 1][x] {
+                    b'.' => y = y + 1,
+                    b'#' => (),
+                    b'[' => {
+                        if push((x, y + 1), Dir::S, grid, true) {
+                            y = y + 1;
+                        }
+                    }
+                    b']' => {
+                        if push((x - 1, y + 1), Dir::S, grid, true) {
+                            y = y + 1;
+                        }
+                    }
+                    x => shucks!("{}", x as char),
+                },
+                _ => {}
+            }
+        }
+        // grid[y][x] = b'@';
+        // for row in &*grid {
+        //     println!("{}", row.p());
+        // }
+        // grid[y][x] = b'.';
+        (0..SIZE)
+            .flat_map(|y| (0..SIZE * 2).map(move |x| (x, y)))
+            .filter(|&(x, y)| grid[y][x] == b'[')
+            .map(|(x, y)| 100 * y + x)
+            .sum::<usize>()
     }
 
     #[no_mangle]
-    pub fn part2(i: &str) -> impl Display {
-        const W: u8 = 101;
-        const H: u8 = 103;
-        let mut positions_x = [0; 500];
-        let mut velocities_x = [0; 500];
-        let mut positions_y = [0; 500];
-        let mut velocities_y = [0; 500];
-        let mut p = i.as_bytes().as_ptr();
-        unsafe {
-            for j in 0..500 {
-                p = p.add(2);
-                positions_x[j] = match std::slice::from_raw_parts(p, 3) {
-                    [a, b',', _] => {
-                        p = p.add(2);
-                        *a - b'0'
+    pub fn part1(i: &str) -> impl Display {
+        let i = i.as_bytes();
+        let bot = memchr::memchr(b'@', i).ψ();
+        let (mut x, mut y) = (bot % (SIZE + 1), bot / (SIZE + 1));
+        let grid = unsafe {
+            i[..(SIZE + 1) * SIZE]
+                .to_vec()
+                .leak()
+                .as_chunks_unchecked_mut::<{ SIZE + 1 }>()
+        };
+        grid[y][x] = b'.';
+        let i = &i[((SIZE + 1) * SIZE) + 1..];
+        fn push((x, y): (usize, usize), dir: Dir, grid: &mut [[u8; SIZE + 1]]) -> bool {
+            match dir {
+                Dir::N => match grid[y - 1][x] {
+                    b'.' => {
+                        grid[y - 1][x] = b'O';
+                        grid[y][x] = b'.';
+                        return true;
+                        // swap(&mut grid[y - 1][x], &mut grid[y][x]),
                     }
-                    [a, b, b','] => {
-                        p = p.add(3);
-                        (*a - b'0') * 10 + (*b - b'0')
+                    b'O' => {
+                        if push((x, y - 1), dir, grid) {
+                            grid[y - 1][x] = b'O';
+                            grid[y][x] = b'.';
+                            return true;
+                        }
                     }
-                    [a, b, c] => {
-                        p = p.add(4);
-                        ((*a - b'0') * 10 + (*b - b'0')) * 10 + (*c - b'0')
+                    b'#' => {}
+                    x => shucks!("{}", x as char),
+                },
+                Dir::E => match grid[y][x + 1] {
+                    b'.' => {
+                        grid[y][x + 1] = b'O';
+                        grid[y][x] = b'.';
+                        return true;
+                        // swap(&mut grid[y - 1][x], &mut grid[y][x]),
                     }
-                    _ => shucks!(),
-                };
-                positions_y[j] = match std::slice::from_raw_parts(p, 3) {
-                    [a, b' ', _] => {
-                        p = p.add(2 + 2);
-                        *a - b'0'
+                    b'O' => {
+                        if push((x + 1, y), dir, grid) {
+                            grid[y][x + 1] = b'O';
+                            grid[y][x] = b'.';
+                            return true;
+                        }
                     }
-                    [a, b, b' '] => {
-                        p = p.add(3 + 2);
-                        (*a - b'0') * 10 + (*b - b'0')
+                    b'#' => {}
+                    x => shucks!("{}", x as char),
+                },
+                Dir::S => match grid[y + 1][x] {
+                    b'.' => {
+                        grid[y + 1][x] = b'O';
+                        grid[y][x] = b'.';
+                        return true;
+                        // swap(&mut grid[y - 1][x], &mut grid[y][x]),
                     }
-                    [a, b, c] => {
-                        p = p.add(4 + 2);
-                        ((*a - b'0') * 10 + (*b - b'0')) * 10 + (*c - b'0')
+                    b'O' => {
+                        if push((x, y + 1), dir, grid) {
+                            grid[y + 1][x] = b'O';
+                            grid[y][x] = b'.';
+                            return true;
+                        }
                     }
-                    _ => shucks!(),
-                };
-                velocities_x[j] = match std::slice::from_raw_parts(p, 3) {
-                    [a, b',', _] => {
-                        p = p.add(2);
-                        a - b'0'
+                    b'#' => {}
+                    x => shucks!("{}", x as char),
+                },
+                Dir::W => match grid[y][x - 1] {
+                    b'.' => {
+                        grid[y][x - 1] = b'O';
+                        grid[y][x] = b'.';
+                        return true;
+                        // swap(&mut grid[y - 1][x], &mut grid[y][x]),
                     }
-                    [b'-', a, b','] => {
-                        p = p.add(3);
-                        ((*a - b'0') as i8).neg().rem_euclid(103) as u8
+                    b'O' => {
+                        if push((x - 1, y), dir, grid) {
+                            grid[y][x - 1] = b'O';
+                            grid[y][x] = b'.';
+                            return true;
+                        }
                     }
-                    [b'-', a, b] => {
-                        p = p.add(4);
-                        ((((*a - b'0') * 10 + (*b - b'0')) as i8)
-                            .neg()
-                            .rem_euclid(103)) as u8
+                    b'#' => {}
+                    x => shucks!("{}", x as char),
+                },
+            }
+            false
+        }
+        for input in i {
+            match input {
+                b'<' => match grid[y][x - 1] {
+                    b'.' => x = x - 1,
+                    b'#' => (),
+                    b'O' => {
+                        if push((x - 1, y), Dir::W, grid) {
+                            x = x - 1;
+                        }
                     }
-                    [a, b, b','] => {
-                        p = p.add(3);
-                        (*a - b'0') * 10 + (*b - b'0')
+                    x => shucks!("{}", x as char),
+                },
+                b'>' => match grid[y][x + 1] {
+                    b'.' => x = x + 1,
+                    b'#' => (),
+                    b'O' => {
+                        if push((x + 1, y), Dir::E, grid) {
+                            x = x + 1;
+                        }
                     }
-                    _ => shucks!(),
-                };
-                velocities_y[j] = match std::slice::from_raw_parts(p, 3) {
-                    [a, b'\n', _] => {
-                        p = p.add(2);
-                        a - b'0'
+                    x => shucks!("{}", x as char),
+                },
+
+                b'^' => match grid[y - 1][x] {
+                    b'.' => y = y - 1,
+                    b'#' => (),
+                    b'O' => {
+                        if push((x, y - 1), Dir::N, grid) {
+                            y = y - 1;
+                        }
                     }
-                    [b'-', a, b'\n'] => {
-                        p = p.add(3);
-                        ((*a - b'0') as i8).neg().rem_euclid(101) as u8
+                    x => shucks!("{}", x as char),
+                },
+                b'v' => match grid[y + 1][x] {
+                    b'.' => y = y + 1,
+                    b'#' => (),
+                    b'O' => {
+                        if push((x, y + 1), Dir::S, grid) {
+                            y = y + 1;
+                        }
                     }
-                    [b'-', a, b] => {
-                        p = p.add(4);
-                        (((*a - b'0') * 10 + (*b - b'0')) as i8)
-                            .neg()
-                            .rem_euclid(101) as u8
-                    }
-                    [a, b, b'\n'] => {
-                        p = p.add(3);
-                        (*a - b'0') * 10 + (*b - b'0')
-                    }
-                    _ => shucks!(),
-                };
+                    x => shucks!("{}", x as char),
+                },
+                _ => {}
             }
         }
-        use std::simd::prelude::*;
-        let (px, rpx) = positions_x.as_chunks_mut::<32>();
-        let (vx, rvx) = velocities_x.as_chunks_mut::<32>();
-        let mut px: [u8x32; 15] = std::array::from_fn(|i| u8x32::from_array(px[i]));
-        let vx: [u8x32; 15] = std::array::from_fn(|i| u8x32::from_array(vx[i]));
-        let bx = (1..W)
-            .map(|_| {
-                px.iter_mut()
-                    .zip(vx)
-                    .map(|(px, vx)| {
-                        *px += vx;
-                        *px = px
-                            .simd_ge(u8x32::splat(W))
-                            .select(*px - u8x32::splat(W), *px);
-                        *px
-                    })
-                    .map(|x| unsafe {
-                        u64x4::from(core::arch::x86_64::_mm256_sad_epu8(
-                            x.into(),
-                            u8x32::splat(W as u8 / 2).into(),
-                        ))
-                    })
-                    .fold(u64x4::default(), |acc, x| acc + x)
-                    .reduce_sum()
-                    + rpx
-                        .iter_mut()
-                        .zip(&*rvx)
-                        .map(move |(x, vx)| {
-                            *x += vx;
-                            *x %= W;
-                            x.abs_diff(W / 2) as u64
-                        })
-                        .sum::<u64>()
-            })
-            .ι1::<u32>()
-            .min_by_key(|&(x, _)| x)
-            .unwrap()
-            .1 as i32;
+        let mut sum = 0;
+        for (row, y) in grid.into_iter().ι::<u32>() {
+            for (col, x) in row.into_iter().ι::<u32>() {
+                if *col == b'O' {
+                    sum += 100 * y + x
+                }
+            }
+        }
 
-        let (py, rpy) = positions_y.as_chunks_mut::<32>();
-        let (vy, rvy) = velocities_y.as_chunks_mut::<32>();
-        let mut py: [u8x32; 15] = std::array::from_fn(|i| u8x32::from_array(py[i]));
-        let vy: [u8x32; 15] = std::array::from_fn(|i| u8x32::from_array(vy[i]));
-
-        let by = (1..H)
-            .map(|_| {
-                py.iter_mut()
-                    .zip(vy)
-                    .map(|(py, vy)| {
-                        *py += vy;
-                        *py = py
-                            .simd_ge(u8x32::splat(H))
-                            .select(*py - u8x32::splat(H), *py);
-                        *py
-                    })
-                    .map(|x| unsafe {
-                        u64x4::from(core::arch::x86_64::_mm256_sad_epu8(
-                            x.into(),
-                            u8x32::splat(H as u8 / 2).into(),
-                        ))
-                    })
-                    .fold(u64x4::default(), |acc, x| acc + x)
-                    .reduce_sum()
-                    + rpy
-                        .iter_mut()
-                        .zip(&*rvy)
-                        .map(move |(x, vx)| {
-                            *x += vx;
-                            *x %= H;
-                            x.abs_diff(H / 2) as u64
-                        })
-                        .sum::<u64>()
-            })
-            .ι1::<u32>()
-            .min_by_key(|&(x, _)| x)
-            .unwrap()
-            .1 as i32;
-        bx + ((51 * (by - bx)) % H as i32) * W as i32
+        sum
     }
 }
