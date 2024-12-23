@@ -1,10 +1,10 @@
-#![allow(non_snake_case, unused_macros, warnings)]
+#![allow(non_snake_case, unused_macros, unused_unsafe)]
 
 use rustc_hash::FxHashMap as HashMap;
 use rustc_hash::FxHashSet as HashSet;
 use std::{
     cmp::Reverse,
-    collections::{hash_map::Entry, BinaryHeap},
+    collections::BinaryHeap,
     fmt::{Debug, Display, Write},
     hash::Hash,
     mem::swap,
@@ -197,11 +197,65 @@ pub enum Dir {
     W = b'L',
 }
 
+pub struct UnionFind {
+    p: Vec<usize>,
+    s: Vec<usize>,
+}
+
+impl UnionFind {
+    pub fn new(size: usize) -> Self {
+        Self {
+            s: vec![1; size],
+            p: (0..size).collect(),
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.s.fill(1);
+        self.p
+            .iter_mut()
+            .enumerate()
+            .for_each(|(idx, val)| *val = idx);
+    }
+
+    pub fn find(&mut self, key: usize) -> usize {
+        if self.p[key] == key {
+            return key;
+        }
+        let parent = self.find(self.p[key]);
+        self.p[key] = parent;
+        parent
+    }
+
+    pub fn union(&mut self, a: usize, b: usize) -> bool {
+        let α = self.find(a);
+        let β = self.find(b);
+        if α == β {
+            return false;
+        }
+        let a = self.s[α];
+        let b = self.s[β];
+        if a >= b {
+            self.s[α] += b;
+            self.p[β] = α;
+        } else {
+            self.s[β] += a;
+            self.p[α] = β;
+        }
+        true
+    }
+
+    pub fn group_size(&self, group: usize) -> usize {
+        self.s[group]
+    }
+}
+
 pub trait UnsoundUtilities<T> {
     fn ψ(self) -> T;
 }
 
 impl<T> UnsoundUtilities<T> for Option<T> {
+    #[cfg_attr(debug_assertions, track_caller)]
     fn ψ(self) -> T {
         if cfg!(debug_assertions) && self.is_none() {
             panic!();
@@ -220,29 +274,99 @@ impl<T, E> UnsoundUtilities<T> for Result<T, E> {
     }
 }
 
-pub struct LMap<K, V, F>(HashMap<K, V>, F)
+pub struct LMap<K, V>(HashMap<K, V>, fn(&K) -> V)
 where
-    F: Fn(K) -> Option<V>,
-    K: Eq + Hash + Copy;
-impl<K: Eq + Hash + Copy, V, F> LMap<K, V, F>
-where
-    F: Fn(K) -> Option<V>,
-{
-    pub fn new(f: F) -> Self {
+    K: Eq + Hash + Clone;
+impl<K: Ord + Eq + Debug + Hash + Clone, V: Copy + Debug> LMap<K, V> {
+    pub fn new(f: fn(&K) -> V) -> Self {
         Self {
             0: HashMap::default(),
             1: f,
         }
     }
 
-    pub fn get(&mut self, k: K) -> Option<&mut V> {
-        match self.0.entry(k) {
-            Entry::Occupied(x) => Some(x.into_mut()),
-            Entry::Vacant(e) => match self.1(k) {
-                Some(v) => Some(e.insert(v)),
-                None => None,
-            },
+    pub fn with_cap(f: fn(&K) -> V, cap: usize) -> Self {
+        Self {
+            0: HashMap::with_capacity_and_hasher(cap, rustc_hash::FxBuildHasher::default()),
+            1: f,
         }
+    }
+
+    pub fn get(&mut self, k: K) -> V {
+        if let Some(x) = self.0.get(&k) {
+            return *x;
+        }
+        // let mut ks = self.0.keys().collect::<Vec<_>>();
+        // ks.sort();
+        // println!("{ks:?}");
+        let elm = self.1(&k);
+        self.0.insert(k.clone(), elm);
+        elm
+    }
+}
+
+macro_rules! memoize {
+    (|$pat:pat_param in $in:ty| -> $out:ty $body:block; $arg:expr) => {{
+        static mut MEMOIZER: std::sync::OnceLock<crate::util::LMap<$in, $out>> =
+            std::sync::OnceLock::new();
+        unsafe {
+            MEMOIZER.get_mut_or_init(|| crate::util::LMap::new(|$pat: &$in| -> $out { $body }))
+        }
+        .get($arg)
+    }};
+    (|$pat:pat_param in $in:ty| -> $out:ty $body:block; $arg:expr; with cap $cap:literal) => {{
+        static mut MEMOIZER: std::sync::OnceLock<crate::util::LMap<$in, $out>> =
+            std::sync::OnceLock::new();
+        unsafe {
+            MEMOIZER.get_mut_or_init(|| {
+                crate::util::LMap::with_cap(|$pat: $in| -> $out { $body }, $cap)
+            })
+        }
+        .get($arg)
+    }};
+}
+#[allow(unused_imports)]
+pub(crate) use memoize;
+
+pub fn countg_with_check<N: Debug + PartialEq + Hash + Eq + Copy, I: Iterator<Item = N>>(
+    start: N,
+    graph: &mut impl Fn(N) -> I,
+    ok: &mut impl Fn(N, N) -> bool,
+    sum: &mut usize,
+    end: &mut impl Fn(N) -> bool,
+) {
+    if end(start) {
+        *sum += 1;
+    } else {
+        graph(start)
+            .map(|x| {
+                if ok(start, x) {
+                    // println!("\"{start:?}\" -> \"{x:?}\"");
+                    countg_with_check(x, graph, ok, sum, end);
+                }
+            })
+            .Θ();
+    }
+}
+
+pub fn countg_uniq_with_check<N: Debug + PartialEq + Hash + Eq + Copy, I: Iterator<Item = N>>(
+    start: N,
+    graph: &mut impl Fn(N) -> I,
+    ok: &mut impl Fn(N, N) -> bool,
+    sum: &mut usize,
+    end: &mut impl Fn(N) -> bool,
+    has: &mut HashSet<N>,
+) {
+    if end(start) && has.insert(start) {
+        *sum += 1;
+    } else {
+        graph(start)
+            .map(|x| {
+                if ok(start, x) {
+                    countg_uniq_with_check(x, graph, ok, sum, end, has);
+                }
+            })
+            .Θ();
     }
 }
 
@@ -342,13 +466,13 @@ pub fn dijkstra<N: Debug + Eq + Hash + Copy + Ord, I: Iterator<Item = (N, u16)>>
     graph: impl Fn(N) -> I,
     start: N,
     end: impl Fn(N) -> bool,
-) -> u16 {
+) -> Option<u16> {
     let mut q = BinaryHeap::new();
     let mut s = HashSet::default();
     q.push(Reverse((0, start)));
     while let Some(Reverse((c, n))) = q.pop() {
         if end(n) {
-            return c;
+            return Some(c);
         }
         if !s.insert(n) {
             continue;
@@ -357,10 +481,11 @@ pub fn dijkstra<N: Debug + Eq + Hash + Copy + Ord, I: Iterator<Item = (N, u16)>>
             if s.contains(&n) {
                 continue;
             }
+            // print!("{n:?} ");
             q.push(Reverse((c + d, n)));
         }
     }
-    dang!()
+    None
 }
 
 impl std::ops::Add<(i64, i64)> for Dir {
@@ -371,6 +496,18 @@ impl std::ops::Add<(i64, i64)> for Dir {
             Dir::E => (x + 1, y),
             Dir::S => (x, y + 1),
             Dir::W => (x - 1, y),
+        }
+    }
+}
+
+impl std::ops::Add<(usize, usize)> for Dir {
+    type Output = (usize, usize);
+    fn add(self, (x, y): (usize, usize)) -> Self::Output {
+        match self {
+            Dir::N => (x, y.wrapping_sub(1)),
+            Dir::E => (x.wrapping_add(1), y),
+            Dir::S => (x, y.wrapping_add(1)),
+            Dir::W => (x.wrapping_sub(1), y),
         }
     }
 }
@@ -413,25 +550,33 @@ impl std::ops::Add<(i16, i16)> for Dir {
 }
 
 impl std::ops::Add<(u8, u8)> for Dir {
-    type Output = Option<(u8, u8)>;
+    type Output = (u8, u8);
 
     fn add(self, (x, y): (u8, u8)) -> Self::Output {
         match self {
-            Dir::N => Some((x, y.checked_sub(1)?)),
-            Dir::E => Some((x + 1, y)),
-            Dir::S => Some((x, y + 1)),
-            Dir::W => Some((x.checked_sub(1)?, y)),
+            Dir::N => (x, y.wrapping_sub(1)),
+            Dir::E => (x.wrapping_add(1), y),
+            Dir::S => (x, y.wrapping_add(1)),
+            Dir::W => (x.wrapping_sub(1), y),
         }
     }
 }
 
 impl Dir {
-    pub fn turn_90(&mut self) {
+    pub fn turn_90(self) -> Self {
         match self {
-            Dir::N => *self = Dir::E,
-            Dir::E => *self = Dir::S,
-            Dir::S => *self = Dir::W,
-            Dir::W => *self = Dir::N,
+            Dir::N => Dir::E,
+            Dir::E => Dir::S,
+            Dir::S => Dir::W,
+            Dir::W => Dir::N,
+        }
+    }
+    pub fn turn_90ccw(self) -> Self {
+        match self {
+            Dir::N => Dir::W,
+            Dir::E => Dir::N,
+            Dir::S => Dir::E,
+            Dir::W => Dir::S,
         }
     }
 }
@@ -594,6 +739,12 @@ impl DigiCount for u8 {
     }
 }
 
+impl DigiCount for u128 {
+    fn ͱ(self) -> u32 {
+        self.checked_ilog10().ψ() + 1
+    }
+}
+
 pub trait Ͷ: DigiCount {
     fn ͷ(self) -> impl Iterator<Item = u8>;
     fn Ͷ(self, i: u8) -> u8;
@@ -612,6 +763,7 @@ macro_rules! digs {
         }
     };
 }
+digs!(u128);
 digs!(u64);
 digs!(u32);
 digs!(u16);
@@ -949,6 +1101,38 @@ pub fn nail<const N: usize, T: Copy>(x: &[T]) -> [T; N] {
 }
 
 pub mod reading {
+    pub struct Integer<'a, 'b, T, const BY: u8 = b'\n'> {
+        pub x: &'a mut &'b [u8],
+        pub _ph: std::marker::PhantomData<T>,
+    }
+
+    impl<'a, 'b, T: Copy, const BY: u8> Integer<'a, 'b, T, BY> {
+        pub fn new(x: &'a mut &'b [u8]) -> Self {
+            Self {
+                x,
+                _ph: std::marker::PhantomData,
+            }
+        }
+    }
+    impl<
+            'a,
+            'b,
+            const BY: u8,
+            T: Default
+                + std::ops::Mul<T, Output = T>
+                + Add<T, Output = T>
+                + From<u8>
+                + Copy
+                + Ten
+                + Debug,
+        > Iterator for Integer<'a, 'b, T, BY>
+    {
+        type Item = T;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            (!self.x.is_empty()).then(|| read_until(self.x, BY))
+        }
+    }
     #[inline]
     pub fn 八(n: u64) -> u64 {
         // reinterpret as u64 ("92233721" => 92233721)
@@ -1079,20 +1263,20 @@ pub mod reading {
         Ok(num)
     }
 
-    pub fn 迄または完了<
+    pub fn read_until<
         T: Default + std::ops::Mul<T, Output = T> + Add<T, Output = T> + From<u8> + Copy + Ten,
     >(
         x: &mut &[u8],
         until: u8,
     ) -> T {
-        let mut n = T::default();
-        while let Ok(x) = x.by() {
+        let mut n = T::from(x.by().ψ() - b'0');
+        loop {
+            let x = x.by().ψ();
             if x == until {
                 return n;
             }
             n = n * T::ten() + T::from(x - b'0')
         }
-        n
     }
 
     pub fn 負迄(x: &mut &[u8], until: u8) -> i64 {
@@ -1144,7 +1328,7 @@ pub fn even(x: &usize) -> bool {
 impl<T, I: Iterator<Item = T>> GreekTools<T> for I {
     #[cfg_attr(debug_assertions, track_caller)]
     fn Δ(&mut self) -> T {
-        self.next().α()
+        self.next().ψ()
     }
 
     fn ν<const N: usize>(&mut self, into: &mut [T; N]) -> usize {
@@ -1432,6 +1616,9 @@ impl<T: Copy + 'static, I: Iterator<Item = T>> IntoCombinations<T> for I {
 
 pub trait Skip {
     fn skip(&mut self, n: usize);
+    fn skip_n(&mut self, n: &'static str) {
+        self.skip(n.len())
+    }
 }
 
 impl<T> Skip for &[T] {
@@ -1468,15 +1655,6 @@ pub mod rand {
         let m1 = (tmp >> 64) ^ tmp;
         let tmp = m1.wrapping_mul(0x1b03738712fad5c9);
         ((tmp >> 64) ^ tmp) as u64
-    }
-
-    /// 0..N
-    pub mod limit {
-        use crate::util::Widen;
-
-        pub fn u64(of: u64) -> u64 {
-            ((super::u64().widen().wrapping_mul(of.widen())) >> 64) as u64
-        }
     }
 
     pub fn u32() -> u32 {
