@@ -29,173 +29,43 @@
     hint_assert_unchecked
 )]
 mod util;
-pub mod day23 {
-    use super::util;
+pub mod day25 {
     use super::util::prelude::*;
-    #[no_mangle]
-    pub fn part2(x: &str) -> String {
-        let g = Graph::load(x);
-        let x = g.mxq();
-        let mut i = 0;
-        const c: u8 = b',';
-        static mut out: [u8; 38] = [
-            0, 0, c, 0, 0, c, 0, 0, c, 0, 0, c, 0, 0, c, 0, 0, c, 0, 0, c, 0, 0, c, 0, 0, c, 0, 0,
-            c, 0, 0, c, 0, 0, c, 0, 0,
-        ];
-        for j in 0..WORDS {
-            let mut x = x[j];
-            while x != 0 {
-                let bit = x.trailing_zeros();
-                unsafe {
-                    out[i + i * 2..i + i * 2 + 2]
-                        .copy_from_slice(&C! { NAMES[64 * j + bit as usize] })
-                };
-                i += 1;
-                x &= !(1 << bit);
+    use std::simd::prelude::*;
+    pub fn part1(x: &str) -> u32 {
+        unsafe {
+            let i = x.as_bytes().as_ptr();
+            static mut keys: [u32; 256] = [u32::MAX; 256];
+            let mut ki = 0;
+            static mut locks: [u32; 250] = [u32::MAX; 250];
+            let mut li = 0;
+            for j in 0..500 {
+                let acc = i
+                    .add(j * (7 * 6 + 1) + 3)
+                    .cast::<u8x32>()
+                    .read_unaligned()
+                    .simd_eq(Simd::splat(b'#'))
+                    .to_bitmask() as u32;
+                if acc & 1 == 0 {
+                    C! { keys[ki] = acc };
+                    ki += 1;
+                } else {
+                    C! { locks[li] = acc };
+                    li += 1;
+                }
             }
+            let mut sum = i32x8::splat(0);
+            for l in locks {
+                for &k in keys.as_chunks_unchecked::<8>() {
+                    sum += (u32x8::splat(l) & u32x8::from_array(k))
+                        .simd_eq(Simd::splat(0))
+                        .to_int();
+                }
+            }
+            -sum.reduce_sum() as u32
         }
-        unsafe { String::from_utf8_unchecked(out.to_vec()) }
     }
-
-    fn part1(x: &str) -> u32 {
-        let adj = Graph::load(x).adj;
-        let mut has = [false; 676];
-        let mut sum = 0;
-        for computer in 494..=519 {
-            has[computer] = true;
-            let nbors = Graph::adj_on(adj[computer]);
-            for (&elem2, i) in nbors.iter().ι::<usize>() {
-                for &elem3 in &nbors[i..] {
-                    if !has[elem2] && !has[elem3] && adj[elem2][elem3 / 64] & 1 << (elem3 % 64) != 0
-                    {
-                        sum += 1;
-                    }
-                }
-            }
-        }
-        sum
-    }
-    struct Graph {
-        // vert: [[u8; 2]; SIZE],
-        adj: Box<[[u64; WORDS]; SIZE]>,
-    }
-    const SIZE: usize = 676;
-    const WORDS: usize = (SIZE + 63) / 64;
-    fn h([a, b]: [u8; 2]) -> usize {
-        a as usize + 26 * b as usize
-    }
-    const NAMES: [[u8; 2]; 676] = include!("../lut2");
-
-    impl Graph {
-        fn load(content: &str) -> Self {
-            const INDEX: [u16; 3295] = {
-                let mut l = [0; 3295];
-                include!("../lut");
-                l
-            };
-            let mut i = content.as_ptr();
-            let mut adj = Box::new([[0u64; WORDS]; SIZE]);
-            for _ in 0..3380 {
-                unsafe {
-                    let a = *(i as *const [u8; 2]);
-                    let b = *(i.add(3) as *const [u8; 2]);
-                    let ha = h(a);
-                    let hb = h(b);
-                    i = i.add(6);
-                    let i = INDEX[ha] as usize;
-                    let j = INDEX[hb] as usize;
-                    *adj.get_unchecked_mut(i).get_unchecked_mut(j / 64) |= 1u64 << (j % 64);
-                    *adj.get_unchecked_mut(j).get_unchecked_mut(i / 64) |= 1u64 << (i % 64);
-                }
-            }
-            Graph { adj }
-        }
-
-        fn print_mat(x: [u64; WORDS], l: [u8; 2]) {
-            let n = Self::adj_on(x);
-            print!("{}: ", l.p());
-            for neighbor in n {
-                print!("{} ", NAMES[neighbor].p());
-            }
-            println!();
-        }
-
-        fn first_2_bits(x: [u64; WORDS]) -> [usize; 2] {
-            let mut out = [0; 2];
-            let mut index = 0;
-            for j in 0..WORDS {
-                let mut x = x[j];
-                while x != 0 {
-                    let bit = x.trailing_zeros();
-                    out[index] = 64 * j + bit as usize;
-                    index += 1;
-                    if index == 2 {
-                        return out;
-                    }
-                    x &= !(1 << bit);
-                }
-            }
-            panic!()
-        }
-
-        fn adj_on(x: [u64; WORDS]) -> Vec<usize> {
-            let mut n = Vec::with_capacity(13);
-            for j in 0..WORDS {
-                let mut x = x[j];
-                while x != 0 {
-                    let bit = x.trailing_zeros();
-                    n.push(64 * j + bit as usize);
-                    x &= !(1 << bit);
-                }
-            }
-            n
-        }
-
-        fn mxq(&self) -> [u64; WORDS] {
-            'out: for computer in 0..SIZE {
-                let neighbors = self.adj[computer];
-                if neighbors == [0; 11] {
-                    continue;
-                }
-                // neighbors[computer / 64] |= 1 << (computer % 64);
-                // self.print_mat(neighbors, *b"nh");
-                for node in Self::first_2_bits(neighbors) {
-                    let inter = (0..WORDS)
-                        .map(|i| (self.adj[node][i] & neighbors[i]).count_ones())
-                        .sum::<u32>();
-                    // check that the current node has 11 neighbours in common with either its first or second neighbour
-                    if inter == 11 {
-                        let mut v = [0; 11];
-                        let mut pop = 0;
-                        for j in 0..WORDS {
-                            // self.print_mat(neighbors, *b"nh");
-                            let mut x = neighbors[j];
-                            while x != 0 {
-                                let bit = x.trailing_zeros();
-                                let n = 64 * j + bit as usize;
-                                let inter = (0..WORDS)
-                                    .map(|i| (self.adj[n][i] & neighbors[i]).count_ones())
-                                    .sum::<u32>();
-                                // they all have 11 neighbours in common with the current node
-                                if inter == 11 {
-                                    v[j] |= 1 << bit;
-                                    pop += 1;
-                                }
-                                x &= !(1 << bit);
-                            }
-                        }
-                        // self.print_mat(v, *b"ot");
-                        if pop != 12 {
-                            continue 'out;
-                        }
-                        v[computer / 64] |= 1 << computer % 64;
-                        // v.push(computer);
-                        // println!("whoa");
-                        return v;
-                    }
-                }
-            }
-            panic!()
-        }
+    pub fn part2(_: &str) -> u32 {
+        0
     }
 }
